@@ -1,0 +1,223 @@
+/* =========================
+   RESET
+========================= */
+
+/* =========================
+   LAYOUT
+========================= */
+
+/* =========================
+   SIDEBAR
+========================= */
+
+/* =========================
+   MAIN
+========================= */
+
+.main {
+    flex: 1;
+    padding: 40px;
+}
+
+/* =========================
+   SUCCESS CARD
+========================= */
+
+.success-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 80px);
+}
+
+.success-card {
+    width: 100%;
+    max-width: 760px;
+
+    background: linear-gradient(180deg, #131e36, #10192e);
+
+    border: 1px solid var(--border);
+    border-radius: 24px;
+
+    padding: 60px;
+
+    text-align: center;
+
+    position: relative;
+    overflow: hidden;
+}
+
+.success-card::before {
+    content: "";
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 50%;
+    top: -120px;
+    right: -120px;
+}
+
+.success-icon {
+    width: 95px;
+    height: 95px;
+
+    margin: auto auto 30px;
+
+    border-radius: 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: rgba(16, 185, 129, 0.12);
+
+    border: 1px solid rgba(16, 185, 129, 0.3);
+
+    color: var(--green);
+
+    font-size: 36px;
+}
+
+.success-card h1 {
+    font-size: 42px;
+    margin-bottom: 14px;
+}
+
+.success-card p {
+    color: var(--muted);
+    font-size: 17px;
+}
+
+.success-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 40px;
+}
+
+.mini-box {
+    background: var(--card-light);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px;
+}
+
+.mini-box__label {
+    display: block;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.mini-box h3 {
+    font-size: 28px;
+}
+
+.success-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 40px;
+}
+
+.btn {
+    border: none;
+    border-radius: 14px;
+    padding: 14px 28px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-secondary {
+    background: #18273e;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-primary {
+    background: var(--yellow);
+    color: #111827;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+/* =========================
+   DESGLOSE POR TEMA
+========================= */
+.results-breakdown {
+    margin-top: 32px;
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: left;
+}
+
+.results-breakdown__title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.breakdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #16233b;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #233554;
+    font-size: 13px;
+}
+
+.breakdown-item__name {
+    color: #cbd5e1;
+    font-weight: 500;
+}
+
+.breakdown-item__stats {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.breakdown-pill {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.breakdown-pill--correct {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.breakdown-pill--wrong {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.breakdown-pill--omitted {
+    background: rgba(234, 179, 8, 0.15);
+    color: #facc15;
+}
+
+.breakdown-pill--score {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+}

@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ATHENA — Diagrama Visual de Arquitectura Integral</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090D16;
+      --bg-card: rgba(18, 26, 43, 0.85);
+      --bg-surface: rgba(13, 19, 33, 0.95);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(56, 189, 248, 0.3);
+      
+      --accent-blue: #38BDF8;
+      --accent-cyan: #06B6D4;
+      --accent-green: #22C55E;
+      --accent-amber: #F59E0B;
+      --accent-red: #EF4444;
+      --accent-purple: #A855F7;
+      
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+      overflow-x: auto;
+    }
+
+    header {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 24px 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .title-group h1 {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #38BDF8 0%, #818CF8 50%, #C084FC 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .title-group p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .legend-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .badge-green {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ADE80;
+      border-color: rgba(34, 197, 94, 0.3);
+    }
+
+    .badge-amber {
+      background: rgba(245, 158, 11, 0.15);
+      color: #FBBF24;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .badge-blue {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60A5FA;
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .badge-green .status-dot { background: #4ADE80; box-shadow: 0 0 8px #4ADE80; }
+    .badge-amber .status-dot { background: #FBBF24; box-shadow: 0 0 8px #FBBF24; }
+    .badge-blue .status-dot { background: #60A5FA; box-shadow: 0 0 8px #60A5FA; }
+
+    /* CONTENEDOR PRINCIPAL DE ARQUITECTURA */
+    .arch-container {
+      display: grid;
+      grid-template-columns: 360px 80px 480px 80px 380px 80px 320px;
+      gap: 0;
+      align-items: stretch;
+      min-width: 1780px;
+      margin-bottom: 40px;
+    }
+
+    .column-panel {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 20px 40px -15px rgba(0,0,0,0.6);
+      position: relative;
+    }
+
+    .column-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+    }
+
+    .column-header h2 {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .col-frontend { border-top: 4px solid var(--accent-blue); }
+    .col-backend { border-top: 4px solid var(--accent-red); }
+    .col-db { border-top: 4px solid var(--accent-green); }
+    .col-ai { border-top: 4px solid var(--accent-purple); }
+
+    .node-group {
+      background: rgba(10, 15, 26, 0.7);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .node-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-node {
+      background: rgba(25, 34, 56, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 12px 14px;
+      transition: all 0.25s ease;
+      cursor: default;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card-node:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-glow);
+      box-shadow: 0 8px 20px -6px rgba(56, 189, 248, 0.25);
+    }
+
+    .card-node.node-green { border-left: 3px solid var(--accent-green); }
+    .card-node.node-amber { border-left: 3px solid var(--accent-amber); }
+    .card-node.node-blue { border-left: 3px solid var(--accent-blue); }
+
+    .node-title {
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .node-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* CONECTORES VISUALES */
+    .connector-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .pipe-line {
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, #38BDF8, #818CF8);
+      position: relative;
+      box-shadow: 0 0 10px #38BDF8;
+    }
+
+    .pipe-badge {
+      position: absolute;
+      top: -14px;
+      background: #0F172A;
+      border: 1px solid #38BDF8;
+      color: #38BDF8;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #38BDF8;
+      border-radius: 50%;
+      position: absolute;
+      top: -3px;
+      animation: movePipe 2.5s infinite linear;
+      box-shadow: 0 0 12px #38BDF8;
+    }
+
+    @keyframes movePipe {
+      0% { left: 0%; opacity: 0; }
+      20% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { left: 95%; opacity: 0; }
+    }
+
+    /* DETALLES Y FLUJOS */
+    .flow-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 28px;
+      margin-top: 30px;
+    }
+
+    .flow-section h3 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      color: var(--accent-blue);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .step-card {
+      background: rgba(18, 26, 43, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.2);
+      color: var(--accent-blue);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .step-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .step-body {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ENCABEZADO Y LEYENDA -->
+  <header>
+    <div class="title-group">
+      <h1>🏛️ ATHENA — Arquitectura Integral y Visual</h1>
+      <p>Plataforma Inteligente de Preparación Saber 11 (ICFES) | Frontend React 19 + Backend Laravel 12 + Base de Datos Híbrida + Gemini IA</p>
+    </div>
+    <div class="legend-bar">
+      <div class="badge badge-green"><span class="status-dot"></span> 🟢 Completo / Núcleo Activo</div>
+      <div class="badge badge-amber"><span class="status-dot"></span> 🟡 En Integración / Parcial</div>
+      <div class="badge badge-blue"><span class="status-dot"></span> 🔵 Roadmap Futuro (Post-MVP)</div>
+    </div>
+  </header>
+
+  <!-- LIENZO DE ARQUITECTURA TIPO DRAW.IO -->
+  <div class="arch-container">
+
+    <!-- COLUMNA 1: FRONTEND REACT -->
+    <div class="column-panel col-frontend">
+      <div class="column-header">
+        <h2 style="color: var(--accent-blue);">⚛️ 1. Frontend (React 19)</h2>
+        <span class="badge badge-amber">Vite + R-Router v7</span>
+      </div>
+
+      <!-- Auth -->
+      <div class="node-group">
+        <div class="node-group-title">Autenticación & Acceso</div>
+        <div class="card-node node-green">
+          <div class="node-title">Login / Registro Estudiante <span>🟢</span></div>
+          <div class="node-desc">pages/authentications/login_student.jsx<br>pages/authentications/register_student.jsx</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">Login Administrativo <span>🟢</span></div>
+          <div class="node-desc">pages/admin/login_admin.jsx</div>
+        </div>
+      </div>
+
+      <!-- Estudiante -->
+      <div class="node-group">
+        <div class="node-group-title">Vistas Estudiante (MainLayout)</div>
+        <div class="card-node node-amber">
+          <div class="node-title">Dashboard & KPIs <span>🟡</span></div>
+          <div class="node-desc">pages/dashboards/dashboard.jsx</div>
+        </div>
+        <div class="card-node node-amber">
+          <div class="node-title">Simulacros ICFES (/mock/*) <span>🟡</span></div>
+          <div class="node-desc">config, quick, exam, results, review, history</div>
+        </div>
+        <div class="card-node node-amber">
+          <div class="node-title">Tutor ATHENA IA (/ai-tutor) <span>🟡</span></div>
+          <div class="node-desc">pages/ai_tutor/chat.jsx (Chat Socrático)</div>
+        </div>
+        <div class="card-node node-amber">
+          <div class="node-title">Prácticas por Materia (/practices) <span>🟡</span></div>
+          <div class="node-desc">config, full, practice_results</div>
+        </div>
+        <div class="card-node node-amber">
+          <div class="node-title">Perfil, Logros & Stats <span>🟡</span></div>
+          <div class="node-desc">profiles, achievements, statistics, ranking</div>
+        </div>
+        <div class="card-node node-blue">
+          <div class="node-title">Tienda & Planes [FUTURO] <span>🔵</span></div>
+          <div class="node-desc">store.jsx, subscription.jsx, payments.jsx</div>
+        </div>
+      </div>
+
+      <!-- Admin -->
+      <div class="node-group">
+        <div class="node-group-title">Panel Administrativo (AdminLayout)</div>
+        <div class="card-node node-green">
+          <div class="node-title">Banco ICFES & Usuarios <span>🟢</span></div>
+          <div class="node-desc">questions.jsx, subjects.jsx, users.jsx, exams.jsx</div>
+        </div>
+      </div>
+
+      <!-- Cliente Axios -->
+      <div class="card-node node-green" style="background: rgba(56, 189, 248, 0.1); border-color: var(--accent-blue);">
+        <div class="node-title" style="color: var(--accent-blue);">🌐 Cliente Axios Central (api/axios.js) <span>🟢</span></div>
+        <div class="node-desc">BaseURL: http://127.0.0.1:8000/api<br>Headers: Authorization: Bearer {token}<br>Módulos: api/exams.js, api/progress.js, api/ai.js</div>
+      </div>
+    </div>
+
+    <!-- CONECTOR FRONT ➔ BACK -->
+    <div class="connector-col">
+      <div class="pipe-line">
+        <div class="pulse-dot"></div>
+      </div>
+      <div class="pipe-badge">JSON / REST</div>
+    </div>
+
+    <!-- COLUMNA 2: BACKEND LARAVEL -->
+    <div class="column-panel col-backend">
+      <div class="column-header">
+        <h2 style="color: var(--accent-red);">🛡️ 2. Backend (Laravel 12 API)</h2>
+        <span class="badge badge-green">PHP 8.2+ MVC</span>
+      </div>
+
+      <!-- Rutas & Middleware -->
+      <div class="node-group">
+        <div class="node-group-title">Enrutamiento & Seguridad (routes/api.php)</div>
+        <div class="card-node node-green">
+          <div class="node-title">Sanctum Auth & CheckRole Middleware <span>🟢</span></div>
+          <div class="node-desc">Rutas modulares: /auth, /exams, /progress, /ai, /users, /subjects, /questions</div>
+        </div>
+      </div>
+
+      <!-- Controladores -->
+      <div class="node-group">
+        <div class="node-group-title">Controladores Oficiales (app/Http/Controllers)</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div class="card-node node-green">
+            <div class="node-title">AuthController <span>🟢</span></div>
+            <div class="node-desc">login, register, logout, me</div>
+          </div>
+          <div class="card-node node-green">
+            <div class="node-title">ExamController <span>🟢</span></div>
+            <div class="node-desc">configure, submit, finish</div>
+          </div>
+          <div class="card-node node-green">
+            <div class="node-title">ProgressController <span>🟢</span></div>
+            <div class="node-desc">summary, stats, weaknesses</div>
+          </div>
+          <div class="card-node node-green">
+            <div class="node-title">AIController <span>🟢</span></div>
+            <div class="node-desc">sendMessage, getHistory</div>
+          </div>
+          <div class="card-node node-green">
+            <div class="node-title">Admin Controllers <span>🟢</span></div>
+            <div class="node-desc">User, Subject, Question CRUD</div>
+          </div>
+          <div class="card-node node-green">
+            <div class="node-title">ProfileController <span>🟢</span></div>
+            <div class="node-desc">achievements, notifications</div>
+          </div>
+        </div>
+        <div class="card-node node-amber" style="margin-top: 4px;">
+          <div class="node-title">Form Requests Validator <span>🟡</span></div>
+          <div class="node-desc">StartExamRequest, SubmitAnswerRequest, FinishExamRequest, StoreQuestionRequest</div>
+        </div>
+      </div>
+
+      <!-- Servicios de Negocio -->
+      <div class="node-group">
+        <div class="node-group-title">Servicios de Negocio (app/Services)</div>
+        
+        <div class="card-node node-green">
+          <div class="node-title">ExamService.php <span>🟢</span></div>
+          <div class="node-desc">
+            • <b>configureExam():</b> Inicializa ExamAttempt (in_progress)<br>
+            • <b>getExamQuestions():</b> Preguntas balanceadas por materia y dificultad<br>
+            • <b>submitAnswer():</b> Guarda respuesta con tiempo cronometrado<br>
+            • <b>finishExam():</b> Calificación y cálculo de puntaje ICFES 0-500
+          </div>
+        </div>
+
+        <div class="card-node node-green">
+          <div class="node-title">ProgressService.php <span>🟢</span></div>
+          <div class="node-desc">
+            • <b>getUserSummary():</b> Promedio, total simulacros, aciertos y XP<br>
+            • <b>getStrengthsAndWeaknesses():</b> Detección de temas débiles (&lt;50%)
+          </div>
+        </div>
+
+        <div class="card-node node-green">
+          <div class="node-title">AiService.php & AiContextService.php <span>🟢</span></div>
+          <div class="node-desc">
+            • Extrae debilidades del alumno desde MySQL e inyecta en el Prompt<br>
+            • Orquesta historial de chat en MongoDB y llamada al LLM
+          </div>
+        </div>
+
+        <div class="card-node node-green">
+          <div class="node-title">GeminiService.php <span>🟢</span></div>
+          <div class="node-desc">Cliente oficial google-gemini-php/laravel</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONECTOR BACK ➔ BD -->
+    <div class="connector-col">
+      <div class="pipe-line" style="background: linear-gradient(90deg, #EF4444, #10B981);">
+        <div class="pulse-dot" style="background: #10B981; box-shadow: 0 0 12px #10B981;"></div>
+      </div>
+      <div class="pipe-badge" style="border-color: #10B981; color: #10B981;">ORM / ODM</div>
+    </div>
+
+    <!-- COLUMNA 3: PERSISTENCIA HÍBRIDA -->
+    <div class="column-panel col-db">
+      <div class="column-header">
+        <h2 style="color: var(--accent-green);">🗄️ 3. Persistencia Híbrida</h2>
+        <span class="badge badge-green">MySQL + MongoDB</span>
+      </div>
+
+      <!-- MySQL Relacional -->
+      <div class="node-group">
+        <div class="node-group-title">MySQL 8 — Datos Relacionales (Eloquent)</div>
+        <div class="card-node node-green">
+          <div class="node-title">users <span>🟢</span></div>
+          <div class="node-desc">id, email, password, role, xp, level, coins, streak</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">subjects & topics <span>🟢</span></div>
+          <div class="node-desc">5 Materias oficiales ICFES + Temas vinculados</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">questions & question_options <span>🟢</span></div>
+          <div class="node-desc">Banco de preguntas con justificación oficial y 4 opciones</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">exam_configs & exam_attempts <span>🟢</span></div>
+          <div class="node-desc">Intentos de simulacros, puntaje ICFES 0-500 y tiempos</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">attempt_answers <span>🟢</span></div>
+          <div class="node-desc">Registro detallado respuesta por respuesta</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">user_topic_performance <span>🟢</span></div>
+          <div class="node-desc">Métricas acumuladas de aciertos y fallos por tema</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">achievements & notifications <span>🟢</span></div>
+          <div class="node-desc">Logros desbloqueados y avisos para el alumno</div>
+        </div>
+        <div class="card-node node-blue">
+          <div class="node-title">store_items, subscriptions, payments <span>🔵</span></div>
+          <div class="node-desc">Tablas de monetización preparadas [FUTURO]</div>
+        </div>
+      </div>
+
+      <!-- MongoDB NoSQL -->
+      <div class="node-group">
+        <div class="node-group-title">MongoDB Atlas — Telemetría IA (NoSQL)</div>
+        <div class="card-node node-green">
+          <div class="node-title">ai_conversations <span>🟢</span></div>
+          <div class="node-desc">Sesiones de chat, metadatos, materias y etiquetas</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">ai_interactions <span>🟢</span></div>
+          <div class="node-desc">Mensajes, tokens utilizados y latencia de respuesta</div>
+        </div>
+        <div class="card-node node-green">
+          <div class="node-title">ai_learning_contexts <span>🟢</span></div>
+          <div class="node-desc">Instantáneas del rendimiento usadas en el prompt</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONECTOR BACK ➔ IA -->
+    <div class="connector-col">
+      <div class="pipe-line" style="background: linear-gradient(90deg, #10B981, #A855F7);">
+        <div class="pulse-dot" style="background: #A855F7; box-shadow: 0 0 12px #A855F7;"></div>
+      </div>
+      <div class="pipe-badge" style="border-color: #A855F7; color: #A855F7;">HTTPS API</div>
+    </div>
+
+    <!-- COLUMNA 4: MOTOR DE IA EXTERNO -->
+    <div class="column-panel col-ai">
+      <div class="column-header">
+        <h2 style="color: var(--accent-purple);">🧠 4. Motor de IA</h2>
+        <span class="badge badge-green">Google Gemini</span>
+      </div>
+
+      <div class="node-group" style="height: 100%; justify-content: center;">
+        <div class="card-node node-green" style="background: rgba(168, 85, 247, 0.12); border: 2px solid var(--accent-purple); padding: 20px;">
+          <div class="node-title" style="font-size: 16px; color: var(--accent-purple); margin-bottom: 12px;">⚡ Google Gemini Flash API <span>🟢</span></div>
+          <div class="node-desc" style="font-size: 12px; line-height: 1.6;">
+            • <b>Prompt Pedagógico:</b> Tutoría socrática especializada en Saber 11 ICFES.<br>
+            • <b>Context-Aware:</b> Recibe el historial académico y las debilidades del estudiante.<br>
+            • <b>Baja Latencia:</b> Optimizado para streaming rápido de respuestas paso a paso.<br>
+            • <b>Regla de Oro:</b> No altera el banco oficial ni inventa calificaciones.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SECCIÓN DE FLUJO INTEGRAL -->
+  <section class="flow-section">
+    <h3>🔄 Flujo Operativo Integral: Desde la Acción del Alumno hasta la Calificación y Tutoría</h3>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <div class="step-title">Configuración del Simulacro</div>
+        <div class="step-body">El estudiante selecciona materias y modo en <code>MockConfig.jsx</code>. Axios envía un POST autenticado a <code>/api/exams/configure</code>.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <div class="step-title">Generación en Backend</div>
+        <div class="step-body"><code>ExamService</code> crea el intento en MySQL, extrae preguntas aleatorias balanceadas del banco oficial y devuelve el examen sanitizado (sin revelar las claves correctas).</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <div class="step-title">Resolución & Envío</div>
+        <div class="step-body">El alumno responde en <code>MockExam.jsx</code> con temporizador. Cada respuesta se registra en <code>attempt_answers</code> midiendo el tiempo empleado.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">4</div>
+        <div class="step-title">Calificación & Telemetría</div>
+        <div class="step-body">Al finalizar, <code>finishExam()</code> calcula el puntaje ICFES (0-500), otorga XP y actualiza la tabla de debilidades <code>user_topic_performance</code>.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">5</div>
+        <div class="step-title">Asistencia Cognitiva con IA</div>
+        <div class="step-body">Si el alumno tiene dudas en una pregunta fallida, <code>AiService</code> ensambla el contexto real del estudiante con la pregunta y consulta a Gemini Flash para explicar el razonamiento paso a paso.</div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

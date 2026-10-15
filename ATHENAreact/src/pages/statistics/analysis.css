@@ -1,0 +1,274 @@
+/* ==========================================
+   RESET
+========================================== */
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ==========================================
+   VARIABLES
+========================================== */
+
+/* ==========================================
+   BASE
+========================================== */
+
+/* ==========================================
+   LAYOUT
+========================================== */
+
+/* ==========================================
+   SIDEBAR
+========================================== */
+
+/* Separador visual antes de Notificaciones */
+
+.sidebar__link--notifications:hover {
+    border-radius: var(--radius-md);
+}
+
+/* ==========================================
+   MAIN
+========================================== */
+.main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.main__content {
+    padding: 32px 40px 40px;
+    max-width: 820px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* ==========================================
+   TOPBAR (solo avatar)
+========================================== */
+.topbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 20px 40px 0 40px;
+}
+
+.topbar__avatar {
+    width: 42px;
+    height: 42px;
+    background-color: var(--primary-light);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    font-size: 18px;
+}
+
+/* ==========================================
+   SECTION HEADER
+========================================== */
+.section-header {
+    margin-bottom: 24px;
+}
+
+.section-header h2 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+}
+
+/* ==========================================
+   DIAGNOSTIC CARD
+========================================== */
+.card--diagnostic {
+    background-color: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 24px 28px;
+    margin-bottom: 32px;
+    border: 1px solid var(--border);
+}
+
+.card__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.card__icon {
+    width: 40px;
+    height: 40px;
+    background-color: var(--bulb-bg);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bulb-color);
+    font-size: 18px;
+}
+
+.card__header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.card--diagnostic p {
+    font-size: 15px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.card--diagnostic p strong {
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* ==========================================
+   CRITICAL TOPICS
+========================================== */
+.critical-topics {
+    margin-bottom: 28px;
+}
+
+.critical-topics__title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--text);
+}
+
+.critical-topics__title span {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 16px;
+}
+
+/* ==========================================
+   TOPIC CARD
+========================================== */
+.topic-card {
+    background-color: var(--bg-topic);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    transition: border-color 0.2s ease;
+}
+
+.topic-card:hover {
+    border-color: var(--primary);
+}
+
+.topic-card__info {
+    flex: 1;
+    min-width: 0;
+}
+
+.topic-card__info h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    color: var(--text);
+}
+
+.topic-card__info span {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* ==========================================
+   BADGES
+========================================== */
+.badge {
+    font-weight: 600;
+    font-size: 13px;
+    padding: 5px 12px;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+}
+
+.badge--red {
+    color: var(--red-text);
+    background-color: var(--red-bg);
+}
+
+.badge--yellow {
+    color: var(--orange-text);
+    background-color: var(--orange-bg);
+}
+
+/* ==========================================
+   BUTTON
+========================================== */
+.topic-card__btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 13px;
+    text-decoration: none;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    background-color: var(--primary-light);
+    transition: background-color 0.2s ease;
+    white-space: nowrap;
+}
+
+.topic-card__btn:hover {
+    background-color: rgba(99, 102, 241, 0.25);
+}
+
+.topic-card__btn i {
+    font-size: 11px;
+}
+
+/* ==========================================
+   MOTIVATION
+========================================== */
+.motivation {
+    background-color: var(--green-bg);
+    border-radius: var(--radius-md);
+    padding: 16px 24px;
+    text-align: center;
+}
+
+.motivation p {
+    color: var(--green-text);
+    font-weight: 600;
+    font-size: 15px;
+}
+
+/* ==========================================
+   RESPONSIVE
+========================================== */
+@media (max-width: 768px) {
+    .main__content {
+        padding: 20px 16px 32px;
+    }
+
+    .topbar {
+        padding: 12px 16px 0 16px;
+    }
+
+    .topic-card {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .topic-card__btn {
+        width: 100%;
+        justify-content: center;
+    }
+}

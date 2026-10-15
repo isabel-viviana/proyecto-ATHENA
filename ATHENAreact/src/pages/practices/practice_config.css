@@ -1,0 +1,541 @@
+.dashboard-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar (Mismo que el dashboard anterior) */
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 40px;
+}
+.logo-box {
+    background: #2b6cb0;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-weight: bold;
+}
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px 15px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border-radius: 10px;
+    transition: 0.3s;
+    margin-bottom: 5px;
+}
+.menu-item.active {
+    background: rgba(43, 108, 176, 0.2);
+    color: #63b3ed;
+    border-left: 3px solid #63b3ed;
+}
+
+/* Main Content */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.header-text h1 {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+.header-text p {
+    color: var(--text-dim);
+}
+
+/* Daily Goal Card */
+.daily-goal-card {
+    background: #0a1128;
+    padding: 15px 20px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border: 1px solid #1a2238;
+}
+
+.goal-icon {
+    color: #f6ad55;
+    font-size: 1.5rem;
+}
+.goal-count {
+    color: #f6ad55;
+    font-weight: bold;
+}
+.goal-progress-bg {
+    width: 120px;
+    height: 6px;
+    background: #1a2238;
+    border-radius: 10px;
+    margin-top: 8px;
+}
+.goal-progress-fill {
+    height: 100%;
+    background: #f6ad55;
+    border-radius: 10px;
+}
+
+/* Grid de Áreas */
+.areas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 25px;
+}
+
+/* Card General */
+.area-card {
+    background: var(--bg-card);
+    border-radius: 24px;
+    padding: 25px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    position: relative;
+    transition: transform 0.3s ease;
+}
+
+.area-card:hover {
+    transform: translateY(-5px);
+}
+
+.card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+
+.area-icon {
+    width: 45px;
+    height: 45px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.arrow-detail {
+    color: var(--text-dim);
+    cursor: pointer;
+}
+
+.area-card h3 {
+    font-size: 1.4rem;
+    margin-bottom: 5px;
+}
+.description {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-bottom: 30px;
+}
+
+/* Dominio / Progress Bar */
+.mastery-section {
+    margin-bottom: 25px;
+}
+.mastery-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+.mastery-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+.fill {
+    height: 100%;
+    border-radius: 10px;
+}
+
+/* Botones */
+.practice-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 14px;
+    border: none;
+    color: white;
+    font-weight: 600;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    transition: background 0.3s;
+}
+
+/* Variantes de Color por Área */
+.math-area .area-icon {
+    background: rgba(49, 130, 206, 0.2);
+    color: var(--math-color);
+}
+.math-area .fill {
+    background: var(--math-color);
+}
+.math-area .percentage {
+    color: var(--math-color);
+}
+.math-area .practice-btn {
+    background: rgba(49, 130, 206, 0.15);
+    border: 1px solid rgba(49, 130, 206, 0.3);
+}
+
+.reading-area .area-icon {
+    background: rgba(128, 90, 213, 0.2);
+    color: var(--reading-color);
+}
+.reading-area .fill {
+    background: var(--reading-color);
+}
+.reading-area .percentage {
+    color: var(--reading-color);
+}
+.reading-area .practice-btn {
+    background: rgba(128, 90, 213, 0.15);
+    border: 1px solid rgba(128, 90, 213, 0.3);
+}
+
+.social-area .area-icon {
+    background: rgba(214, 158, 46, 0.2);
+    color: var(--social-color);
+}
+.social-area .fill {
+    background: var(--social-color);
+}
+.social-area .percentage {
+    color: var(--social-color);
+}
+.social-area .practice-btn {
+    background: rgba(214, 158, 46, 0.15);
+    border: 1px solid rgba(214, 158, 46, 0.3);
+}
+
+.science-area .area-icon {
+    background: rgba(56, 161, 105, 0.2);
+    color: var(--science-color);
+}
+.science-area .fill {
+    background: var(--science-color);
+}
+.science-area .percentage {
+    color: var(--science-color);
+}
+.science-area .practice-btn {
+    background: rgba(56, 161, 105, 0.15);
+    border: 1px solid rgba(56, 161, 105, 0.3);
+}
+
+.english-area .area-icon {
+    background: rgba(229, 62, 62, 0.2);
+    color: var(--english-color);
+}
+.english-area .fill {
+    background: var(--english-color);
+}
+.english-area .percentage {
+    color: var(--english-color);
+}
+.english-area .practice-btn {
+    background: rgba(229, 62, 62, 0.15);
+    border: 1px solid rgba(229, 62, 62, 0.3);
+}
+
+.improve-tag {
+    background: rgba(229, 62, 62, 0.2);
+    color: var(--english-color);
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 8px;
+    margin-right: auto;
+    margin-left: 15px;
+}
+
+/* Floating Elements */
+.help-btn {
+    position: fixed;
+    right: 30px;
+    bottom: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #1a2238;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+/* =========================================
+   PRACTICE MODAL & CONFIG (SPRINT E4.3)
+========================================= */
+
+.practice-notice-banner {
+    background: rgba(14, 165, 233, 0.08);
+    border: 1px solid rgba(14, 165, 233, 0.25);
+    border-radius: 16px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    color: #e2e8f0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.practice-notice-banner strong {
+    color: #38bdf8;
+}
+
+.practice-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(3, 7, 18, 0.8);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.practice-modal {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 24px;
+    width: 100%;
+    max-width: 620px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: modalFadeIn 0.25s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.practice-modal__header {
+    padding: 24px 28px;
+    background: #131e36;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.practice-modal__title-box {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+}
+
+.practice-modal__title-box h2 {
+    font-size: 1.4rem;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+}
+
+.practice-modal__title-box p {
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
+.practice-modal__close {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: 0.2s;
+}
+
+.practice-modal__close:hover {
+    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.practice-modal__body {
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.practice-config-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.practice-config-row label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.label-badge {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 500;
+}
+
+.badge-standard {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.practice-format-box {
+    background: #16243d;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 14px 18px;
+}
+
+.format-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.format-stat strong {
+    font-size: 1.25rem;
+    color: #f1f5f9;
+}
+
+.format-hint {
+    color: #94a3b8;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.practice-select {
+    background: #16243d;
+    border: 1px solid #1e293b;
+    color: #f1f5f9;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: 0.2s;
+    cursor: pointer;
+}
+
+.practice-select:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.field-hint {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
+.practice-info-box {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.practice-error-message {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid #ef4444;
+    color: #fca5a5;
+    padding: 12px 16px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9rem;
+}
+
+.practice-modal__actions {
+    padding: 18px 28px;
+    background: #0b1222;
+    border-top: 1px solid #1e293b;
+    display: flex;
+    justify-content: flex-end;
+    gap: 14px;
+}
+
+.btn-cancel {
+    background: transparent;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 10px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: 0.2s;
+}
+
+.btn-cancel:hover {
+    color: #f1f5f9;
+    border-color: #64748b;
+}
+
+.btn-start {
+    background: #0284c7;
+    border: none;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: 0.2s;
+}
+
+.btn-start:hover {
+    background: #0369a1;
+}
+
+.btn-start:disabled,
+.btn-cancel:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+

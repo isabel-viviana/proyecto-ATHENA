@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('questions', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('subject_id')->constrained('subjects')->cascadeOnDelete();
+            $table->foreignId('topic_id')->constrained('topics')->cascadeOnDelete();
+            $table->text('statement');
+            $table->enum('difficulty', ['easy', 'medium', 'hard']);
+            $table->text('explanation')->nullable();
+            $table->string('source')->nullable();
+            $table->timestamps();
+
+            $table->index('subject_id');
+            $table->index('topic_id');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('questions');
+    }
+};

@@ -1,0 +1,300 @@
+/* ==========================================
+   RANKING PAGE
+========================================== */
+
+.ranking-page {
+    color: var(--text);
+    width: 100%;
+}
+
+/* ==========================================
+   PAGE HEADER
+========================================== */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.page-header__info h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.page-header__info p {
+    max-width: 620px;
+    font-size: 15px;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
+/* ==========================================
+   TOP CARDS
+========================================== */
+
+.ranking-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.ranking-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.ranking-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.ranking-card__label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.ranking-card__value {
+    font-size: 52px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+    letter-spacing: -2px;
+}
+
+.ranking-card__meta {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* ==========================================
+   SCORE BADGES
+========================================== */
+
+.score-badge,
+.table-card .score-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    border-radius: var(--radius-full);
+    background-color: var(--purple-bg);
+    color: var(--purple-text);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    min-width: 70px;
+}
+
+/* ==========================================
+   MAIN CONTENT GRID
+========================================== */
+
+.ranking-table-wrapper {
+    display: grid;
+    grid-template-columns: 1.3fr 0.9fr;
+    gap: 14px;
+}
+
+/* ==========================================
+   SHARED CARDS
+========================================== */
+
+.table-card,
+.national-card,
+.top-department {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+}
+
+/* ==========================================
+   TABLE CARD
+========================================== */
+
+.table-card h3,
+.national-card__title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 10px;
+}
+
+.table-card p,
+.national-card__subtitle,
+.top-department__meta {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin: 0 0 16px;
+}
+
+.table-card table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table-card th,
+.table-card td {
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+
+.table-card th {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.table-card td {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.table-card tbody tr {
+    transition:
+        background-color 0.2s ease,
+        transform 0.2s ease;
+}
+
+.table-card tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+    transform: translateY(-1px);
+}
+
+.table-card tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table-card .rank-number {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.table-card .department-name {
+    font-weight: 600;
+    color: var(--text);
+}
+
+/* ==========================================
+   NATIONAL PANEL
+========================================== */
+
+.national-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.national-card__title {
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.national-card__number {
+    font-size: 42px;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1;
+    letter-spacing: -1px;
+    margin-bottom: 10px;
+}
+
+/* ==========================================
+   TOP DEPARTMENT
+========================================== */
+
+.top-department {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.top-department__rank {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.top-department__name {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.2;
+    letter-spacing: -0.5px;
+}
+
+.top-department__meta {
+    margin: 0;
+}
+
+/* ==========================================
+   RESPONSIVE
+========================================== */
+
+@media (max-width: 1100px) {
+    .ranking-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ranking-table-wrapper {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+    }
+
+    .table-card th,
+    .table-card td {
+        padding: 12px 10px;
+    }
+
+    .ranking-card__value {
+        font-size: 40px;
+    }
+
+    .national-card__number {
+        font-size: 34px;
+    }
+
+    .top-department__name {
+        font-size: 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .table-card {
+        overflow-x: auto;
+    }
+
+    .table-card table {
+        min-width: 520px;
+    }
+}
