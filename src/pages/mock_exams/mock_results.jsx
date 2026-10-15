@@ -43,29 +43,31 @@ const normalizeResults = (raw) => {
     // Intentamos varias capas de wrapping que Laravel puede enviar
     const data = raw?.data ?? raw;
 
-    const score    = data?.score          ?? data?.total_score    ?? data?.puntaje        ?? 0;
-    const correct  = data?.correct        ?? data?.correctas      ?? data?.correct_count  ?? 0;
-    const incorrect= data?.incorrect      ?? data?.incorrectas    ?? data?.incorrect_count?? 0;
-    const omitted  = data?.omitted        ?? data?.omitidas       ?? data?.omitted_count  ?? 0;
-    const total    = data?.total          ?? data?.total_questions?? (correct + incorrect + omitted);
-    const accuracy = data?.accuracy       ?? data?.porcentaje_aciertos
-                  ?? (total > 0 ? Math.round((correct / total) * 100) : 0);
+    const correct   = data?.correct_answers   ?? data?.correct   ?? data?.correctas   ?? data?.correct_count ?? 0;
+    const incorrect = data?.incorrect_answers ?? data?.incorrect ?? data?.incorrectas ?? data?.incorrect_count ?? 0;
+    const omitted   = data?.omitted_answers   ?? data?.omitted   ?? data?.omitidas    ?? data?.omitted_count ?? 0;
+    const total     = data?.total_questions   ?? data?.total     ?? (correct + incorrect + omitted);
 
-    // Rendimiento por materia — prueba varios nombres de campo
+    // Semántica real: 'score_percentage' es el porcentaje de aciertos calculado por Laravel (0 - 100)
+    const score     = data?.score_percentage  ?? data?.score     ?? data?.total_score ?? data?.puntaje ?? 0;
+    const accuracy  = data?.score_percentage  ?? data?.accuracy  ?? data?.porcentaje_aciertos
+                   ?? (total > 0 ? Math.round((correct / total) * 100) : 0);
+
+    // Rendimiento por materia — estructura real de Laravel: subject_performance
     const rawSubjects =
-        data?.subjects_performance ??
         data?.subject_performance  ??
+        data?.subjects_performance ??
         data?.subjects             ??
         data?.areas                ??
         [];
 
     const subjects = rawSubjects.map((s, i) => ({
-        name    : s?.name     ?? s?.subject_name ?? s?.subject ?? s?.materia ?? `Área ${i + 1}`,
-        score   : s?.score    ?? s?.correct      ?? s?.puntaje ?? 0,
-        total   : s?.total    ?? s?.questions    ?? s?.total_questions ?? 0,
-        percent : s?.percent  ?? s?.accuracy     ??
-                  (s?.total > 0 ? Math.round(((s?.score ?? s?.correct ?? 0) / s?.total) * 100) : 0),
-        color   : s?.color    ?? BAR_COLORS[i % BAR_COLORS.length],
+        name    : s?.subject_name ?? s?.name ?? s?.subject ?? s?.materia ?? `Área ${i + 1}`,
+        score   : s?.correct      ?? s?.score ?? s?.puntaje ?? 0,
+        total   : s?.total        ?? s?.questions ?? s?.total_questions ?? 0,
+        percent : s?.score_percentage ?? s?.percent ?? s?.accuracy ??
+                  (s?.total > 0 ? Math.round(((s?.correct ?? s?.score ?? 0) / s?.total) * 100) : 0),
+        color   : s?.color        ?? BAR_COLORS[i % BAR_COLORS.length],
     }));
 
     return { score, correct, incorrect, omitted, total, accuracy, subjects };
@@ -181,8 +183,8 @@ const MockResults = () => {
 
                     <div className="score-circle">
                         <div className="score-circle__inner">
-                            <h2>{score}</h2>
-                            <span>Puntos ICFES</span>
+                            <h2>{score}%</h2>
+                            <span>Rendimiento Global</span>
                         </div>
                     </div>
 

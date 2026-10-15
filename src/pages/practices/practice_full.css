@@ -372,3 +372,154 @@
         display: none;
     }
 }
+
+/* ==========================================
+   ESTÍMULOS PEDAGÓGICOS COMPARTIDOS
+========================================== */
+.stimulus-panel {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-left: 4px solid #38bdf8;
+    border-radius: var(--radius-lg, 12px);
+    margin-bottom: 20px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.stimulus-header {
+    background: #16233b;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.stimulus-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.stimulus-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f1f5f9;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stimulus-toggle-btn {
+    background: transparent;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+
+.stimulus-toggle-btn:hover {
+    color: #f1f5f9;
+    border-color: #64748b;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.stimulus-body {
+    padding: 18px 20px;
+}
+
+.stimulus-instructions {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: rgba(234, 179, 8, 0.08);
+    border: 1px solid rgba(234, 179, 8, 0.25);
+    color: #fde047;
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    line-height: 1.5;
+}
+
+.stimulus-media {
+    margin: 14px 0;
+    text-align: center;
+}
+
+.stimulus-media img {
+    max-width: 100%;
+    max-height: 380px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    object-fit: contain;
+}
+
+.stimulus-caption {
+    display: block;
+    color: #94a3b8;
+    font-size: 12px;
+    margin-top: 6px;
+    font-style: italic;
+}
+
+.stimulus-text {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #cbd5e1;
+    white-space: pre-line;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.stimulus-text::-webkit-scrollbar {
+    width: 6px;
+}
+
+.stimulus-text::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+
+.question-image-box {
+    margin: 16px 0;
+    text-align: center;
+}
+
+.question-image-box img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+}
+
+.option-image-box {
+    margin-top: 8px;
+}
+
+.option-image-box img {
+    max-width: 100%;
+    max-height: 120px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+}

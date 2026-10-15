@@ -1,27 +1,33 @@
 import "./mock_config.css";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Zorrito from "../../assets/images/Zorrito2D.png";
 import { configureExam } from "../../api/exams";
+
+// IDs sincronizados exactamente con MySQL (DatabaseSeeder.php)
+const INITIAL_SUBJECTS = [
+    { id: 1, name: "Matemáticas", icon: "fa-calculator", selected: true },
+    { id: 2, name: "Ciencias Naturales", icon: "fa-flask", selected: true },
+    { id: 3, name: "Lectura Crítica", icon: "fa-book-open", selected: true },
+    { id: 4, name: "Sociales y Ciudadanas", icon: "fa-landmark", selected: true },
+    { id: 5, name: "Inglés", icon: "fa-earth-americas", selected: true },
+];
 
 const MockConfig = () => {
     const navigate = useNavigate();
 
+    // Modalidades permitidas: 'full' (Simulacro Completo ICFES) y 'quick' (Mini Simulacro)
     const [examType, setExamType] = useState("full");
     const [difficulty, setDifficulty] = useState("medium");
-
-    const [subjects, setSubjects] = useState([
-        { id: 1, name: "Matemáticas", selected: true },
-        { id: 2, name: "Lectura Crítica", selected: true },
-        { id: 3, name: "Sociales y Ciudadanas", selected: true },
-        { id: 4, name: "Ciencias Naturales", selected: true },
-        { id: 5, name: "Inglés", selected: true },
-    ]);
+    const [subjects, setSubjects] = useState(INITIAL_SUBJECTS);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
     const toggleSubject = (id) => {
+        // En simulacro completo no se permite alterar las áreas del cuadernillo oficial
+        if (examType === "full") return;
+
         setSubjects((current) =>
             current.map((subject) =>
                 subject.id === id
@@ -37,12 +43,16 @@ const MockConfig = () => {
     const handleStartExam = async () => {
         setError("");
 
-        const selectedSubjects = subjects
-            .filter((subject) => subject.selected)
-            .map((subject) => subject.id);
+        // En simulacro completo siempre se evalúan las 5 áreas oficiales del cuadernillo
+        const selectedSubjects =
+            examType === "full"
+                ? [1, 2, 3, 4, 5]
+                : subjects
+                      .filter((subject) => subject.selected)
+                      .map((subject) => subject.id);
 
         if (selectedSubjects.length === 0) {
-            setError("Debes seleccionar al menos un área.");
+            setError("Debes seleccionar al menos un área para el mini simulacro.");
             return;
         }
 
@@ -55,39 +65,9 @@ const MockConfig = () => {
                 subject_ids: selectedSubjects,
             });
 
-            // Mostrar la respuesta real de Laravel
-            console.log("RESPUESTA COMPLETA:", response);
+            console.log("RESPUESTA CONFIGURACIÓN SIMULACRO:", response);
 
-            /*
-             * Dependiendo de cómo esté construido configureExam(),
-             * puede devolver:
-             *
-             * Axios response:
-             * response.data
-             *
-             * o directamente:
-             * response
-             *
-             * Por eso manejamos ambos casos.
-             */
             const responseData = response?.data ?? response;
-
-            console.log("DATOS DEL SIMULACRO:", responseData);
-
-            /*
-             * Laravel está devolviendo el ID dentro de:
-             *
-             * data.attempt.id
-             *
-             * En tu captura:
-             *
-             * data
-             *   └── attempt
-             *         └── id: 22
-             *
-             * También dejamos algunos posibles formatos
-             * alternativos para que el frontend sea resistente.
-             */
             const examId =
                 responseData?.data?.attempt?.id ||
                 responseData?.attempt?.id ||
@@ -95,25 +75,15 @@ const MockConfig = () => {
                 responseData?.attempt_id ||
                 responseData?.id;
 
-            console.log("ID DEL INTENTO:", examId);
-
             if (!examId) {
                 throw new Error(
-                    "Laravel creó el simulacro, pero no encontramos el ID del intento."
+                    "El servidor configuró el simulacro pero no se obtuvo el ID del intento."
                 );
             }
 
-            /*
-             * El ID que necesitamos para continuar el examen
-             * es el ID del attempt.
-             *
-             * Ejemplo:
-             * /mock/exam?id=22
-             */
             navigate(`/mock/exam?id=${examId}`);
         } catch (err) {
             console.error("ERROR AL CREAR SIMULACRO:", err);
-
             setError(
                 err?.response?.data?.message ||
                     err?.message ||
@@ -127,264 +97,185 @@ const MockConfig = () => {
     return (
         <section className="mock-config">
             <div className="main__content">
-
                 {/* HEADER */}
                 <section className="page-header">
                     <div className="page-header__info">
                         <h1>Configurar Simulacro</h1>
-
                         <p>
-                            Personaliza tu prueba según lo que necesites
-                            practicar hoy.
+                            Selecciona una modalidad oficial para evaluar tus competencias en las pruebas Saber 11.
                         </p>
                     </div>
                 </section>
 
                 {/* CONFIG GRID */}
                 <section className="config-grid">
-
-                    {/* LEFT */}
+                    {/* LEFT: MODALIDADES PERMITIDAS */}
                     <div className="config-card">
-
                         <div className="card-title">
                             <i className="fas fa-gear"></i>
-                            <h3>Tipo de Prueba</h3>
+                            <h3>Modalidad de Simulacro</h3>
                         </div>
 
-                        {/* SIMULACRO COMPLETO */}
+                        {/* 1. SIMULACRO COMPLETO ICFES */}
                         <label
                             className={`option ${
-                                examType === "full"
-                                    ? "option--active"
-                                    : ""
+                                examType === "full" ? "option--active" : ""
                             }`}
                         >
                             <div className="option__top">
-
                                 <div className="option__left">
-
                                     <input
                                         type="radio"
                                         name="examType"
                                         checked={examType === "full"}
-                                        onChange={() =>
-                                            setExamType("full")
-                                        }
+                                        onChange={() => setExamType("full")}
                                     />
-
                                     <div>
-                                        <h4>
-                                            Simulacro Completo ICFES
-                                        </h4>
-
+                                        <h4>Simulacro Completo ICFES</h4>
                                         <p>
-                                            Todas las áreas, 4.5 horas
+                                            5 áreas oficiales · 2 sesiones reglamentarias · 4h 30m
                                         </p>
                                     </div>
-
                                 </div>
+                                <span className="recommended">Oficial ICFES</span>
+                            </div>
+                        </label>
 
-                                <span className="recommended">
-                                    Recomendado
+                        {/* 2. MINI SIMULACRO DIAGNÓSTICO */}
+                        <label
+                            className={`option ${
+                                examType === "quick" ? "option--active" : ""
+                            }`}
+                        >
+                            <div className="option__top">
+                                <div className="option__left">
+                                    <input
+                                        type="radio"
+                                        name="examType"
+                                        checked={examType === "quick"}
+                                        onChange={() => setExamType("quick")}
+                                    />
+                                    <div>
+                                        <h4>Mini Simulacro Diagnóstico</h4>
+                                        <p>
+                                            Evaluación corta multiárea para diagnóstico ágil
+                                        </p>
+                                    </div>
+                                </div>
+                                <span style={{ fontSize: "11px", color: "#60a5fa", fontWeight: 600 }}>
+                                    Diagnóstico
                                 </span>
-
                             </div>
                         </label>
 
-                        {/* POR ÁREA */}
-                        <label
-                            className={`option ${
-                                examType === "practice"
-                                    ? "option--active"
-                                    : ""
-                            }`}
-                        >
-                            <div className="option__left">
-
-                                <input
-                                    type="radio"
-                                    name="examType"
-                                    checked={examType === "practice"}
-                                    onChange={() =>
-                                        setExamType("practice")
-                                    }
-                                />
-
-                                <div>
-                                    <h4>
-                                        Por Área Específica
-                                    </h4>
-
-                                    <p>
-                                        Selecciona una o más áreas
-                                    </p>
-                                </div>
-
-                            </div>
-                        </label>
-
-                        {/* MINI SIMULACRO */}
-                        <label
-                            className={`option ${
-                                examType === "quick"
-                                    ? "option--active"
-                                    : ""
-                            }`}
-                        >
-                            <div className="option__left">
-
-                                <input
-                                    type="radio"
-                                    name="examType"
-                                    checked={examType === "quick"}
-                                    onChange={() =>
-                                        setExamType("quick")
-                                    }
-                                />
-
-                                <div>
-                                    <h4>
-                                        Mini Simulacro
-                                    </h4>
-
-                                    <p>
-                                        Mitad de preguntas, 2 horas
-                                    </p>
-                                </div>
-
-                            </div>
-                        </label>
+                        {/* ENLACE INFORMATIVO HACIA PRÁCTICAS */}
+                        <div className="config-redirect-banner">
+                            <i className="fas fa-info-circle" style={{ color: "#60a5fa" }}></i>
+                            <span>
+                                ¿Quieres entrenar una sola materia por separado? Utiliza el módulo de{" "}
+                                <Link to="/practices">Prácticas por Área</Link> para sesiones de 25 preguntas.
+                            </span>
+                        </div>
 
                         {/* EXTRA SETTINGS */}
                         <div className="extra-settings">
-
                             {/* DIFICULTAD */}
                             <div className="extra-item">
-
-                                <span>
-                                    Dificultad
-                                </span>
-
+                                <span>Dificultad</span>
                                 <select
                                     value={difficulty}
-                                    onChange={(e) =>
-                                        setDifficulty(
-                                            e.target.value
-                                        )
-                                    }
+                                    onChange={(e) => setDifficulty(e.target.value)}
                                 >
-                                    <option value="medium">
-                                        Media
-                                    </option>
-
-                                    <option value="easy">
-                                        Fácil
-                                    </option>
-
-                                    <option value="hard">
-                                        Difícil
-                                    </option>
+                                    <option value="medium">Media (Estándar)</option>
+                                    <option value="easy">Fácil</option>
+                                    <option value="hard">Difícil</option>
                                 </select>
-
                             </div>
 
-                            {/* TIEMPO EXTRA */}
+                            {/* DURACIÓN ESTIMADA SEGÚN MODALIDAD */}
                             <div className="extra-item">
-
-                                <span>
-                                    Tiempo Extra
-                                </span>
-
-                                <select defaultValue="none">
-
-                                    <option value="none">
-                                        No
-                                    </option>
-
-                                    <option value="15">
-                                        +15 min
-                                    </option>
-
-                                    <option value="30">
-                                        +30 min
-                                    </option>
-
-                                </select>
-
+                                <span>Duración estipulada</span>
+                                <strong style={{ color: "#f1f5f9", fontSize: "14px" }}>
+                                    {examType === "full" ? "4 horas 30 min" : "45 minutos"}
+                                </strong>
                             </div>
-
                         </div>
                     </div>
 
-                    {/* RIGHT */}
+                    {/* RIGHT: ÁREAS A EVALUAR */}
                     <div className="config-card">
-
                         <div className="card-title">
-
                             <i className="fas fa-file-lines"></i>
-
-                            <h3>
-                                Áreas a evaluar
-                            </h3>
-
+                            <h3>Áreas a evaluar</h3>
                         </div>
+
+                        {examType === "full" ? (
+                            <div className="mode-lock-notice">
+                                <i className="fas fa-lock"></i>
+                                <span>
+                                    <strong>Cuadernillo Fijo:</strong> Las 5 áreas están fijadas reglamentariamente para el simulacro completo ICFES.
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="mode-lock-notice" style={{ borderColor: "#3b82f6" }}>
+                                <i className="fas fa-sliders" style={{ color: "#60a5fa" }}></i>
+                                <span>
+                                    Selecciona las áreas que deseas incluir en este mini simulacro.
+                                </span>
+                            </div>
+                        )}
 
                         {/* SUBJECTS */}
                         <div className="subjects">
+                            {subjects.map((subject) => {
+                                const isLocked = examType === "full";
+                                const isChecked = isLocked ? true : subject.selected;
 
-                            {subjects.map((subject) => (
-
-                                <label
-                                    className="subject"
-                                    key={subject.id}
-                                >
-
-                                    <input
-                                        type="checkbox"
-                                        checked={subject.selected}
-                                        onChange={() =>
-                                            toggleSubject(
-                                                subject.id
-                                            )
-                                        }
-                                    />
-
-                                    <span>
-                                        {subject.name}
-                                    </span>
-
-                                </label>
-
-                            ))}
-
+                                return (
+                                    <label
+                                        className={`subject ${isLocked ? "subject--locked" : ""}`}
+                                        key={subject.id}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            disabled={isLocked}
+                                            onChange={() => toggleSubject(subject.id)}
+                                        />
+                                        <i className={`fas ${subject.icon}`} style={{ width: "16px", color: "#60a5fa" }}></i>
+                                        <span style={{ fontWeight: 500 }}>{subject.name}</span>
+                                        {isLocked && (
+                                            <span style={{ marginLeft: "auto", fontSize: "11px", color: "#64748b" }}>
+                                                Fija
+                                            </span>
+                                        )}
+                                    </label>
+                                );
+                            })}
                         </div>
 
                         {/* SUMMARY */}
                         <div className="summary-box">
-
                             <div className="summary-item">
-
-                                <span>
-                                    Áreas seleccionadas
-                                </span>
-
+                                <span>Áreas seleccionadas</span>
                                 <strong>
-                                    {
-                                        subjects.filter(
-                                            (subject) =>
-                                                subject.selected
-                                        ).length
-                                    }
+                                    {examType === "full"
+                                        ? "5 de 5 (Oficial)"
+                                        : `${subjects.filter((s) => s.selected).length} de 5`}
                                 </strong>
-
                             </div>
 
                             <div className="summary-item">
+                                <span>Estructura</span>
+                                <strong>
+                                    {examType === "full"
+                                        ? "2 Sesiones oficiales"
+                                        : "Sesión corta"}
+                                </strong>
+                            </div>
 
-                                <span>
-                                    Dificultad
-                                </span>
-
+                            <div className="summary-item">
+                                <span>Dificultad</span>
                                 <strong>
                                     {difficulty === "easy"
                                         ? "Fácil"
@@ -392,30 +283,19 @@ const MockConfig = () => {
                                         ? "Difícil"
                                         : "Media"}
                                 </strong>
-
                             </div>
-
                         </div>
-
                     </div>
-
                 </section>
 
                 {/* ERROR */}
-                {error && (
-                    <div className="error-message">
-                        {error}
-                    </div>
-                )}
+                {error && <div className="error-message">{error}</div>}
 
                 {/* ACTIONS */}
                 <section className="actions">
-
                     <button
                         className="btn btn--secondary"
-                        onClick={() =>
-                            navigate("/dashboard")
-                        }
+                        onClick={() => navigate("/dashboard")}
                         disabled={loading}
                     >
                         Cancelar
@@ -426,37 +306,23 @@ const MockConfig = () => {
                         onClick={handleStartExam}
                         disabled={loading}
                     >
-                        {loading
-                            ? "Creando simulacro..."
-                            : "Iniciar Prueba"}
-
-                        {!loading && (
-                            <i className="fas fa-play"></i>
-                        )}
+                        {loading ? "Preparando simulacro..." : "Iniciar Prueba"}
+                        {!loading && <i className="fas fa-play"></i>}
                     </button>
-
                 </section>
-
             </div>
 
             {/* ASSISTANT */}
             <div className="assistant-box">
-
                 <div className="assistant-message">
-                    ¡Sigue así! Estás haciendo un gran trabajo.
+                    {examType === "full"
+                        ? "El simulacro completo evalúa todas las áreas como en la prueba real. ¡Prepárate con tiempo y concentración!"
+                        : "El mini simulacro es ideal para medir tu agilidad y diagnosticar tus áreas fuertes."}
                 </div>
-
                 <div className="assistant-avatar">
-
-                    <img
-                        src={Zorrito}
-                        alt="Zorrito"
-                    />
-
+                    <img src={Zorrito} alt="Zorrito" />
                 </div>
-
             </div>
-
         </section>
     );
 };

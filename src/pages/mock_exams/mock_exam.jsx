@@ -109,11 +109,6 @@ const MockExam = () => {
             return;
         }
 
-        if (timeLeft <= 0) {
-            handleFinishExam();
-            return;
-        }
-
         const timer = setInterval(() => {
             setTimeLeft((previous) => {
                 if (previous <= 1) {

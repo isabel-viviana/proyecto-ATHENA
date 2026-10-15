@@ -16,8 +16,9 @@ const Chat = () => {
     const [inputText, setInputText] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [conversationId, setConversationId] = useState(null); 
 
-    const messagesEndRef = useRef(null);
+    const messagesEndRef = useRef(null); 
     const inputRef = useRef(null);
 
     // Auto-scroll al final del chat
@@ -41,51 +42,69 @@ const Chat = () => {
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         };
 
-        // Agregar mensaje del usuario inmediatamente
+        // Agregar mensaje del usuario inmediatamente al historial visible
         setMessages((prev) => [...prev, userMsg]);
         setInputText("");
         setError("");
         setLoading(true);
 
         try {
-            // Llamar a la API de Laravel (Gemini)
-            const response = await sendMessage(text);
+            // Llamar a la API de Laravel (Gemini) usando el servicio Axios y enviando el conversation_id si existe
+            const response = await sendMessage(text, conversationId);
             console.log("Respuesta de ATHENA IA:", response);
 
-            // Normalizar la respuesta de Laravel
+            // Almacenar identificador de conversación si el backend lo retorna
+            if (response?.data?.conversation_id) {
+                setConversationId(response.data.conversation_id);
+            }
+
+            // Normalizar la lectura de la respuesta real de Gemini
+            // Prioridad absoluta a data.ai_response (formato devuelto por AiService / AIController)
+            // Se excluye estrictamente response.message (mensaje de estado HTTP) y response.data.message (pregunta del usuario)
             const botReply =
-                response?.reply ||
-                response?.message ||
-                response?.response ||
-                response?.text ||
-                response?.content ||
+                response?.data?.ai_response ||
+                response?.ai_response ||
                 response?.data?.reply ||
-                response?.data?.message ||
-                response?.data?.response ||
+                response?.reply ||
                 (typeof response?.data === "string" ? response?.data : null) ||
-                "He procesado tu consulta. ¿Hay algo más en lo que te pueda ayudar con tu preparación ICFES?";
+                response?.data?.text ||
+                response?.text;
+
+            if (!botReply || typeof botReply !== "string" || !botReply.trim()) {
+                throw new Error(
+                    response?.message && response?.success === false
+                        ? response.message
+                        : "No se recibió una respuesta válida por parte de ATHENA IA."
+                );
+            }
 
             const botMsg = {
                 id: Date.now() + 1,
                 sender: "bot",
-                text: botReply,
+                text: botReply.trim(),
                 time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             };
 
             setMessages((prev) => [...prev, botMsg]);
         } catch (err) {
             console.error("Error al comunicarse con ATHENA IA:", err);
-            const errorMsg =
-                err?.response?.data?.message ||
-                err?.message ||
-                "Lo siento, tuve un problema al conectar con el servidor. Por favor intenta nuevamente.";
+
+            let errorMsg = "Lo siento, ocurrió un problema al conectar con el servidor. Por favor intenta nuevamente.";
+
+            if (err?.response?.data?.errors?.message?.[0]) {
+                errorMsg = err.response.data.errors.message[0];
+            } else if (err?.response?.data?.message) {
+                errorMsg = err.response.data.message;
+            } else if (err?.message) {
+                errorMsg = err.message;
+            }
 
             setError(errorMsg);
 
             const botErrorMsg = {
                 id: Date.now() + 1,
                 sender: "bot",
-                text: "⚠️ Disculpa, ocurrió un error al procesar tu solicitud con la IA. Por favor, verifica tu conexión o intenta con otra pregunta.",
+                text: `⚠️ Disculpa, ocurrió un problema: ${errorMsg}`,
                 time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                 isError: true,
             };
@@ -109,11 +128,14 @@ const Chat = () => {
 
     // Click en acciones rápidas
     const handleQuickAction = (promptText) => {
+        if (loading) return;
         handleSendMessage(promptText);
     };
 
     // Reiniciar conversación
     const handleResetChat = () => {
+        if (loading) return;
+        setConversationId(null);
         setMessages([
             {
                 id: Date.now(),
@@ -148,6 +170,7 @@ const Chat = () => {
                     title="Reiniciar conversación"
                     onClick={handleResetChat}
                     type="button"
+                    disabled={loading}
                 >
                     <i className="fas fa-rotate-right"></i>
                 </button>
@@ -196,6 +219,7 @@ const Chat = () => {
                             className="action-card action-card--blue"
                             onClick={() => handleQuickAction("Explícame la diferencia entre texto continuo y discontinuo en Lectura Crítica.")}
                             type="button"
+                            disabled={loading}
                         >
                             <i className="fas fa-book-open"></i>
                             <span>Explicar un concepto</span>
@@ -205,6 +229,7 @@ const Chat = () => {
                             className="action-card action-card--purple"
                             onClick={() => handleQuickAction("Plantéame una pregunta tipo ICFES de Matemáticas sobre funciones cuadráticas.")}
                             type="button"
+                            disabled={loading}
                         >
                             <i className="fas fa-circle-question"></i>
                             <span>Resolver una pregunta</span>
@@ -214,6 +239,7 @@ const Chat = () => {
                             className="action-card action-card--green"
                             onClick={() => handleQuickAction("¿Qué estrategias puedo usar para mejorar mi tiempo por pregunta en el examen ICFES?")}
                             type="button"
+                            disabled={loading}
                         >
                             <i className="fas fa-chart-line"></i>
                             <span>Consejos de rendimiento</span>
@@ -223,6 +249,7 @@ const Chat = () => {
                             className="action-card action-card--yellow"
                             onClick={() => handleQuickAction("Simulemos una sesión de práctica interactiva con preguntas cortas.")}
                             type="button"
+                            disabled={loading}
                         >
                             <i className="fas fa-bullseye"></i>
                             <span>Practicar conmigo</span>

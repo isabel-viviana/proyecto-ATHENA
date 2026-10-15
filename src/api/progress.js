@@ -23,4 +23,4 @@ export const getSubjectPerformance = async (subjectId) => {
 export const getTopicPerformance = async (topicId) => {
     const response = await api.get(`/progress/topic/${topicId}`);
     return response.data;
-};
+}; 

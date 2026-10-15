@@ -589,3 +589,54 @@ body {
         font-size: 12px;
     }
 }
+
+/* =========================================
+   DIFFERENTIATION & LOCK STYLES (SPRINT E4.3)
+========================================= */
+
+.subject--locked {
+    opacity: 0.82;
+    background: #0f182b;
+    cursor: not-allowed;
+    border-style: dashed;
+}
+
+.subject--locked input {
+    cursor: not-allowed;
+    accent-color: #3b82f6;
+}
+
+.config-redirect-banner {
+    margin-top: 18px;
+    padding: 14px 16px;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    line-height: 1.5;
+}
+
+.config-redirect-banner a {
+    color: #60a5fa;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.mode-lock-notice {
+    padding: 10px 14px;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: #94a3b8;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.4;
+}
+

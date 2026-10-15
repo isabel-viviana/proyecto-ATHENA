@@ -41,6 +41,7 @@ import AiTutor from "./pages/ai_tutor/chat";
 import Practices from "./pages/practices/practice_config";
 import PracticesFull from "./pages/practices/practice_full";
 import PracticesResult from "./pages/practices/practice_results";
+import PracticeReview from "./pages/practices/practice_review";
 import Profiles from "./pages/profiles/profile";
 import ProfileLogros from "./pages/profiles/profile_achievements";
 import ProfileEdit from "./pages/profiles/profile_edit";
@@ -98,6 +99,10 @@ function App() {
                     <Route
                         path="/practices-result"
                         element={<PracticesResult />}
+                    />
+                    <Route
+                        path="/practices-review"
+                        element={<PracticeReview />}
                     />
 
                     <Route path="/profile" element={<ProfileLayout />}>
