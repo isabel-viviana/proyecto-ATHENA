@@ -1,4 +1,4 @@
-import api from './axios';
+import api from './axios.js';
 
 export const getProgressDashboard = async () => {
     const response = await api.get('/progress');

@@ -1,7 +1,24 @@
 import "./statistics.css";
 import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import useProgressStore from "../../stores/useProgressStore";
 
 const Statistics = () => {
+    const fetchDashboardProgress = useProgressStore((state) => state.fetchDashboardProgress);
+    const dashboard = useProgressStore((state) => state.dashboard);
+    const totalSimulacros = useProgressStore(
+        (state) => state.dashboard?.resumen_general?.total_simulacros_completados ?? 12
+    );
+    const areaFuerte = useProgressStore(
+        (state) => state.dashboard?.temas_fuertes?.[0]?.subject_name || "Lectura Crítica"
+    );
+
+    useEffect(() => {
+        if (!dashboard) {
+            fetchDashboardProgress();
+        }
+    }, [dashboard, fetchDashboardProgress]);
+
     return (
         <>
             {/*  CONTENIDO  */}
@@ -50,7 +67,7 @@ const Statistics = () => {
                             SIMULACROS COMPLETADOS
                         </h4>
                         <div className="stat-card__score stat-card__score--medium">
-                            12
+                            {totalSimulacros}
                         </div>
                         <p className="stat-card__note">Último hace 2 días</p>
                         <p className="stat-card__positive">
@@ -61,7 +78,7 @@ const Statistics = () => {
                     {/*  Área más fuerte  */}
                     <div className="stat-card">
                         <h4 className="stat-card__label">ÁREA MÁS FUERTE</h4>
-                        <h3 className="stat-card__area">Lectura Crítica</h3>
+                        <h3 className="stat-card__area">{areaFuerte}</h3>
                         <p className="stat-card__note">Percentil 85%</p>
                         <p className="stat-card__positive">¡Sigue así!</p>
                     </div>

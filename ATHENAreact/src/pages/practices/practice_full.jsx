@@ -1,8 +1,13 @@
 import "./practice_full.css";
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
+import { useShallow } from "zustand/react/shallow";
 import Zorrito from "../../assets/images/Zorrito2D.png";
 import { getExamQuestions, submitAnswer, finishExam } from "../../api/exams";
+import useExamStore from "../../stores/useExamStore";
+import PracticeHeader from "./components/PracticeHeader";
+import PracticeOptions from "./components/PracticeOptions";
+import PracticeFooter from "./components/PracticeFooter";
 
 const PracticeFull = () => {
     const [searchParams] = useSearchParams();
@@ -12,8 +17,17 @@ const PracticeFull = () => {
     const practiceId = searchParams.get("id");
 
     const [questions, setQuestions] = useState([]);
-    const [currentQuestion, setCurrentQuestion] = useState(0);
-    const [answers, setAnswers] = useState({});
+
+    // Selectores optimizados de Zustand:
+    // Selector atómico para el índice de la pregunta activa
+    const currentIndex = useExamStore((state) => state.currentIndex);
+    // useShallow para las acciones de inicialización y reinicio del examen
+    const { initPractice, resetPractice } = useExamStore(
+        useShallow((state) => ({
+            initPractice: state.initPractice,
+            resetPractice: state.resetPractice,
+        }))
+    );
 
     // Control de colapso de estímulo compartido
     const [stimulusCollapsed, setStimulusCollapsed] = useState(false);
@@ -42,6 +56,7 @@ const PracticeFull = () => {
             try {
                 setLoading(true);
                 setError("");
+                resetPractice();
 
                 const response = await getExamQuestions(practiceId);
 
@@ -59,14 +74,14 @@ const PracticeFull = () => {
 
                 setQuestions(receivedQuestions);
 
-                // Inicializar respuestas previas si el intento ya tenía progreso registrado
+                // Inicializar respuestas previas en Zustand si el intento ya tenía progreso registrado
                 const preselected = {};
                 receivedQuestions.forEach((q) => {
                     if (q.selected_option_id) {
                         preselected[q.id] = q.selected_option_id;
                     }
                 });
-                setAnswers(preselected);
+                initPractice(preselected, 0);
             } catch (err) {
                 console.error("Error al cargar preguntas de práctica:", err);
                 setError(
@@ -80,7 +95,7 @@ const PracticeFull = () => {
         };
 
         loadPracticeQuestions();
-    }, [practiceId]);
+    }, [practiceId, initPractice, resetPractice]);
 
     /* ============================================================
      * TEMPORIZADOR DE PRÁCTICA
@@ -104,22 +119,21 @@ const PracticeFull = () => {
     /* ============================================================
      * DETECCIÓN DE ESTÍMULO CONSECUTIVO (OPTIMIZACIÓN DE SCROLL)
      * ============================================================ */
-    const question = questions[currentQuestion];
-    const prevQuestion = currentQuestion > 0 ? questions[currentQuestion - 1] : null;
+    const question = questions[currentIndex];
+    const prevQuestion = currentIndex > 0 ? questions[currentIndex - 1] : null;
 
-    const isSameStimulusAsPrevious =
+    const isSameStimulusAsPrevious = Boolean(
         question?.stimulus &&
         prevQuestion?.stimulus &&
-        question.stimulus.id === prevQuestion.stimulus.id;
+        question.stimulus.id === prevQuestion.stimulus.id
+    );
 
     // Al cambiar de pregunta, colapsar automáticamente solo si es continuación del mismo texto
-    useEffect(() => {
-        if (isSameStimulusAsPrevious) {
-            setStimulusCollapsed(true);
-        } else {
-            setStimulusCollapsed(false);
-        }
-    }, [currentQuestion]);
+    const [prevIndex, setPrevIndex] = useState(currentIndex);
+    if (prevIndex !== currentIndex) {
+        setPrevIndex(currentIndex);
+        setStimulusCollapsed(Boolean(isSameStimulusAsPrevious));
+    }
 
     /* ============================================================
      * HELPERS DE CONTENIDO E IMÁGENES
@@ -138,10 +152,6 @@ const PracticeFull = () => {
         return q?.options || q?.question_options || [];
     };
 
-    const getOptionText = (opt) => {
-        return opt?.option_text || opt?.text || opt?.content || "";
-    };
-
     const resolveMediaUrl = (url) => {
         if (!url) return null;
         if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
@@ -152,21 +162,15 @@ const PracticeFull = () => {
     };
 
     /* ============================================================
-     * REGISTRO DE RESPUESTAS
+     * SINCRONIZACIÓN DE RESPUESTAS CON EL BACKEND
      * ============================================================ */
-    const handleSelectOption = async (option) => {
+    const handleOptionSelected = async (option) => {
         if (!question || saving || finishing) return;
 
         const questionId = question.id;
         const optionId = option.id;
 
-        if (!questionId || !optionId) return;
-
-        // Actualizar estado visual inmediato
-        setAnswers((prev) => ({
-            ...prev,
-            [questionId]: optionId,
-        }));
+        if (questionId == null || optionId == null) return;
 
         try {
             setSaving(true);
@@ -190,23 +194,6 @@ const PracticeFull = () => {
     };
 
     /* ============================================================
-     * NAVEGACIÓN ENTRE PREGUNTAS
-     * ============================================================ */
-    const handleNext = () => {
-        if (currentQuestion < questions.length - 1) {
-            setCurrentQuestion((prev) => prev + 1);
-            window.scrollTo({ top: 0, behavior: "smooth" });
-        }
-    };
-
-    const handlePrevious = () => {
-        if (currentQuestion > 0) {
-            setCurrentQuestion((prev) => prev - 1);
-            window.scrollTo({ top: 0, behavior: "smooth" });
-        }
-    };
-
-    /* ============================================================
      * FINALIZAR PRÁCTICA
      * ============================================================ */
     const handleFinishPractice = async () => {
@@ -225,6 +212,7 @@ const PracticeFull = () => {
                 time_spent_seconds: secondsElapsed,
             });
 
+            resetPractice();
             navigate(`/practices-result?id=${practiceId}`);
         } catch (err) {
             console.error("Error al finalizar práctica:", err);
@@ -269,7 +257,7 @@ const PracticeFull = () => {
                         No se pudo iniciar la práctica
                     </h1>
                     <p style={{ color: "#94a3b8", marginBottom: "24px" }}>{error}</p>
-                    <Link to="/practices">
+                    <Link to="/practices" onClick={() => resetPractice()}>
                         <button type="button" className="footer-btn footer-btn--primary">
                             Volver a Selección de Áreas
                         </button>
@@ -280,10 +268,6 @@ const PracticeFull = () => {
     }
 
     const currentOptions = getOptions(question);
-    const selectedOptionId = question ? answers[question.id] : null;
-    const progressPercentage = questions.length > 0
-        ? Math.round(((currentQuestion + 1) / questions.length) * 100)
-        : 0;
     const subjectName = question?.subject?.name || "Área ICFES";
     const topicName = question?.topic?.name || "";
     const stimulus = question?.stimulus;
@@ -291,31 +275,14 @@ const PracticeFull = () => {
     return (
         <>
             <div className="main__content">
-                {/* CABECERA DE LA PRÁCTICA */}
-                <section className="quiz-top">
-                    <div className="quiz-top__left">
-                        <span className="quiz-top__subject">
-                            PRÁCTICA · {subjectName.toUpperCase()}
-                            {topicName ? ` · ${topicName}` : ""}
-                        </span>
-                        <h2>
-                            Pregunta {currentQuestion + 1} de {questions.length}
-                        </h2>
-                    </div>
-
-                    <div className="quiz-top__timer">
-                        <i className="fa-regular fa-clock"></i>
-                        <span>{formatTimer(secondsElapsed)}</span>
-                    </div>
-                </section>
-
-                {/* BARRA DE PROGRESO */}
-                <div className="progress">
-                    <div
-                        className="progress__fill"
-                        style={{ width: `${progressPercentage}%` }}
-                    ></div>
-                </div>
+                {/* CABECERA Y BARRA DE PROGRESO (Consume useExamStore directamente) */}
+                <PracticeHeader
+                    subjectName={subjectName}
+                    topicName={topicName}
+                    totalQuestions={questions.length}
+                    secondsElapsed={secondsElapsed}
+                    formatTimer={formatTimer}
+                />
 
                 {/* MENSAJE DE ERROR TEMPORAL */}
                 {error && (
@@ -414,37 +381,14 @@ const PracticeFull = () => {
                         </div>
                     )}
 
-                    {/* OPCIONES DE RESPUESTA */}
-                    <div className="options">
-                        {currentOptions.map((opt) => {
-                            // Usar 'option_letter' oficial de la API
-                            const optionLetter = opt.option_letter || "A";
-                            const isSelected = selectedOptionId === opt.id;
-
-                            return (
-                                <button
-                                    key={opt.id}
-                                    type="button"
-                                    className={`option ${isSelected ? "option--selected" : ""}`}
-                                    onClick={() => handleSelectOption(opt)}
-                                    disabled={saving || finishing}
-                                >
-                                    <span className="option__letter">{optionLetter}</span>
-                                    <div style={{ textAlign: "left", width: "100%" }}>
-                                        <span>{getOptionText(opt)}</span>
-                                        {opt.option_image_url && (
-                                            <div className="option-image-box">
-                                                <img
-                                                    src={resolveMediaUrl(opt.option_image_url)}
-                                                    alt={`Opción ${optionLetter}`}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    {/* OPCIONES DE RESPUESTA (Consume answers y setAnswer directamente de useExamStore) */}
+                    <PracticeOptions
+                        question={question}
+                        options={currentOptions}
+                        disabled={saving || finishing}
+                        resolveMediaUrl={resolveMediaUrl}
+                        onOptionSelected={handleOptionSelected}
+                    />
 
                     {saving && (
                         <p style={{ fontSize: "12px", color: "#60a5fa", marginTop: "10px" }}>
@@ -454,54 +398,13 @@ const PracticeFull = () => {
                     )}
                 </section>
 
-                {/* PIE DE PÁGINA / NAVEGACIÓN */}
-                <section className="quiz-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "24px" }}>
-                    <button
-                        type="button"
-                        className="footer-btn footer-btn--ghost"
-                        onClick={handlePrevious}
-                        disabled={currentQuestion === 0 || saving || finishing}
-                    >
-                        <i className="fas fa-chevron-left"></i>
-                        Anterior
-                    </button>
-
-                    <div style={{ display: "flex", gap: "10px" }}>
-                        <button
-                            type="button"
-                            className="footer-btn footer-btn--ghost"
-                            onClick={handleFinishPractice}
-                            disabled={finishing}
-                            style={{ borderColor: "#ef4444", color: "#fca5a5" }}
-                        >
-                            <i className="fas fa-flag-checkered" style={{ marginRight: "6px" }}></i>
-                            Finalizar Práctica
-                        </button>
-
-                        {currentQuestion < questions.length - 1 ? (
-                            <button
-                                type="button"
-                                className="footer-btn footer-btn--primary"
-                                onClick={handleNext}
-                                disabled={saving || finishing}
-                            >
-                                Siguiente
-                                <i className="fas fa-chevron-right"></i>
-                            </button>
-                        ) : (
-                            <button
-                                type="button"
-                                className="footer-btn footer-btn--primary"
-                                onClick={handleFinishPractice}
-                                disabled={finishing}
-                                style={{ background: "#10b981" }}
-                            >
-                                {finishing ? "Finalizando..." : "Ver Resultados"}
-                                <i className="fas fa-check" style={{ marginLeft: "6px" }}></i>
-                            </button>
-                        )}
-                    </div>
-                </section>
+                {/* PIE DE PÁGINA / NAVEGACIÓN (Consume currentIndex y setCurrentIndex con useShallow) */}
+                <PracticeFooter
+                    totalQuestions={questions.length}
+                    saving={saving}
+                    finishing={finishing}
+                    onFinish={handleFinishPractice}
+                />
             </div>
 
             {/* ASISTENTE ZORRITO */}

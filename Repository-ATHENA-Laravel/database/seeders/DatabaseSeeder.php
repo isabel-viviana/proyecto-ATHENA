@@ -308,5 +308,8 @@ class DatabaseSeeder extends Seeder
                 ]);
             }
         }
+
+        // 13. Banco de Preguntas Mínimo para Prácticas de Matemáticas
+        $this->call(MathematicsPracticeQuestionsSeeder::class);
     }
 }
