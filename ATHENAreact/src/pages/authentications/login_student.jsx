@@ -3,22 +3,26 @@ import Zorrito2D from "../../assets/images/Zorrito2D.png";
 import ZorritoLogo from "../../assets/images/Zorrito6.png";
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { useAuthStore } from "../../stores/useAuthStore";
 
 const LoginStudent = () => {
     /* estado local del formulario: se usa para validar y controlar el boton */
     /* importante: estos estados evitan errores tipicos de submit duplicado */
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const error = useAuthStore((state) => state.error);
+    const isSubmitting = useAuthStore((state) => state.loading);
+    const login = useAuthStore((state) => state.login);
+    const clearError = useAuthStore((state) => state.clearError);
+    const setError = useAuthStore((state) => state.setError);
 
     /* navegacion post submit: mantiene la vista declarativa con react-router */
     const navigate = useNavigate();
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         /* evita recarga del navegador para mantener el SPA */
         e.preventDefault();
-        setError("");
+        clearError();
 
         /* validacion minima antes de “simular” el submit */
         if (!email.trim() || !password.trim()) {
@@ -27,11 +31,12 @@ const LoginStudent = () => {
         }
 
         /* importante: deshabilitar el boton previene dobles submits en taps rapidos */
-        setIsSubmitting(true);
-        setTimeout(() => {
-            setIsSubmitting(false);
+        try {
+            await login({ email: email.trim(), password });
             navigate("/dashboard");
-        }, 600);
+        } catch {
+            // El mensaje visible lo gestiona el store.
+        }
     };
 
     return (

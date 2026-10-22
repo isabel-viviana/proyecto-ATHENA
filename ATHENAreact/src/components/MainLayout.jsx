@@ -2,9 +2,16 @@ import { Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import Sidebar from "./Sidebar";
 import Footer from "./footer/Footer";
+import { useEffect } from "react";
+import { useAuthStore } from "../stores/useAuthStore";
 
 const MainLayout = () => {
     const location = useLocation();
+    const fetchCurrentUser = useAuthStore((state) => state.fetchCurrentUser);
+
+    useEffect(() => {
+        fetchCurrentUser();
+    }, [fetchCurrentUser]);
 
     /* importante: key={location.pathname} fuerza el re-montaje de cada ruta
     asi la animacion de framer-motion no se “estanca” cuando cambias de pagina */

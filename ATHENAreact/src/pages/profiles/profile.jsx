@@ -1,7 +1,11 @@
 import "./profile.css";
 import { Link } from "react-router-dom";
+import { useAuthStore } from "../../stores/useAuthStore";
 
 const Profile = () => {
+    const user = useAuthStore((state) => state.user);
+    const logout = useAuthStore((state) => state.logout);
+    const displayName = user?.full_name || user?.name || "Usuario Estudiante";
     return (
         <div className="profile-page">
             {/* DECORATIVE BLURS */}
@@ -12,7 +16,7 @@ const Profile = () => {
             <section className="profile-header-card">
                 <div className="profile-user">
                     <div className="avatar-container">
-                        <div className="avatar-circle">A</div>
+                        <div className="avatar-circle">{displayName.charAt(0).toUpperCase()}</div>
 
                         <span className="level-badge">LVL 15</span>
                     </div>
@@ -249,7 +253,7 @@ const Profile = () => {
 
             {/* FOOTER */}
             <footer className="profile-footer">
-                <Link to="/login" className="logout-btn">
+                <Link to="/login" className="logout-btn" onClick={() => logout()}>
                     <i className="fas fa-sign-out-alt"></i>
                     Cerrar sesión
                 </Link>
