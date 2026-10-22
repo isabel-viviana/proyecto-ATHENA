@@ -24,7 +24,7 @@ const LoginStudent = () => {
         e.preventDefault();
         clearError();
 
-        /* validacion minima antes de “simular” el submit */
+        /* Validación rápida para evitar enviar campos vacíos al backend. */
         if (!email.trim() || !password.trim()) {
             setError("Por favor completa el correo y la contraseña.");
             return;
