@@ -1,7 +1,7 @@
 import "./practice_full.css";
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { useShallow } from "zustand/react/shallow";
+import { useShallow } from "zustand/react/shallow"; //z
 import Zorrito from "../../assets/images/Zorrito2D.png";
 import { getExamQuestions, submitAnswer, finishExam } from "../../api/exams";
 import useExamStore from "../../stores/useExamStore";
@@ -20,7 +20,7 @@ const PracticeFull = () => {
 
     // Selectores optimizados de Zustand:
     // Selector atómico para el índice de la pregunta activa
-    const currentIndex = useExamStore((state) => state.currentIndex);
+    const currentIndex = useExamStore((state) => state.currentIndex); 
     // useShallow para las acciones de inicialización y reinicio del examen
     const { initPractice, resetPractice } = useExamStore(
         useShallow((state) => ({
