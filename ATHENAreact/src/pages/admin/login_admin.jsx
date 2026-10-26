@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./login_admin.css";
 import ZorritoLogo from "../../assets/images/Zorrito6.png";
+import { useAuthStore, getRedirectPathByRole } from "../../stores/useAuthStore";
 
 const LoginAdmin = () => {
     const [email, setEmail] = useState("");
@@ -9,9 +10,21 @@ const LoginAdmin = () => {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const login = useAuthStore((state) => state.login);
+    const logout = useAuthStore((state) => state.logout);
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+    const role = useAuthStore((state) => state.role);
+
     const navigate = useNavigate();
 
-    const handleSubmit = (e) => {
+    // Redirección si ya está autenticado con rol administrativo
+    useEffect(() => {
+        if (isAuthenticated && ["admin", "super_admin", "support"].includes(role)) {
+            navigate(getRedirectPathByRole(role), { replace: true });
+        }
+    }, [isAuthenticated, role, navigate]);
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
 
@@ -22,11 +35,22 @@ const LoginAdmin = () => {
 
         setIsSubmitting(true);
 
-        // Simulación de ingreso y redirección requerida a /super/dashboard
-        setTimeout(() => {
+        try {
+            const data = await login({ email: email.trim(), password });
+            const userRole = data?.user?.role;
+
+            if (!["admin", "super_admin", "support"].includes(userRole)) {
+                setError("Esta cuenta no tiene privilegios administrativos.");
+                await logout();
+                setIsSubmitting(false);
+                return;
+            }
+
+            navigate(getRedirectPathByRole(userRole));
+        } catch (err) {
             setIsSubmitting(false);
-            navigate("/super/dashboard");
-        }, 500);
+            setError(err?.message || "Credenciales de administrador inválidas.");
+        }
     };
 
     return (

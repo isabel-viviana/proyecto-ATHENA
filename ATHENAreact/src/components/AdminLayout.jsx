@@ -3,11 +3,13 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import "./AdminLayout.css";
 import logoImg from "../assets/images/Zorrito_8.png";
+import useAuthStore from "../stores/useAuthStore";
 
 const AdminLayout = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const logout = useAuthStore((state) => state.logout);
 
     // Identificar el rol actual según la ruta
     const isSuper = location.pathname.startsWith("/super");
@@ -43,7 +45,8 @@ const AdminLayout = () => {
         { label: "Configuración", icon: "fa-solid fa-sliders", path: "#" },
     ];
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        await logout();
         navigate("/admin/login");
     };
 

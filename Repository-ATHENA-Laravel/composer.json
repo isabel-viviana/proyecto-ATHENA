@@ -83,6 +83,9 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
+        },
+        "platform": {
+            "ext-mongodb": "1.21.5"
         }
     },
     "minimum-stability": "stable",

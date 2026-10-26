@@ -9,10 +9,25 @@ use Symfony\Component\HttpFoundation\Response;
 class RoleMiddleware
 {
     /**
-     * Handle an incoming request.
+     * Verifica que el usuario autenticado tenga uno de los roles permitidos.
+     * Uso en rutas: ->middleware('role:admin,super_admin')
      */
-    public function handle(Request $request, Closure $next, string $role): Response
+    public function handle(Request $request, Closure $next, string ...$roles): Response
     {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'No autenticado.',
+            ], 401);
+        }
+
+        if (!in_array($user->role, $roles, true)) {
+            return response()->json([
+                'message' => 'No tienes permisos para acceder a este recurso.',
+            ], 403);
+        }
+
         return $next($request);
     }
 }

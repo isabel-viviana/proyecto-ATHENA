@@ -2,36 +2,46 @@ import "./login_student.css";
 import Zorrito2D from "../../assets/images/Zorrito2D.png";
 import ZorritoLogo from "../../assets/images/Zorrito6.png";
 import { Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuthStore, getRedirectPathByRole } from "../../stores/useAuthStore";
 
 const LoginStudent = () => {
     /* estado local del formulario: se usa para validar y controlar el boton */
-    /* importante: estos estados evitan errores tipicos de submit duplicado */
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const error = useAuthStore((state) => state.error);
+    const isSubmitting = useAuthStore((state) => state.loading);
+    const login = useAuthStore((state) => state.login);
+    const clearError = useAuthStore((state) => state.clearError);
+    const setError = useAuthStore((state) => state.setError);
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+    const role = useAuthStore((state) => state.role);
 
-    /* navegacion post submit: mantiene la vista declarativa con react-router */
     const navigate = useNavigate();
 
-    const handleSubmit = (e) => {
-        /* evita recarga del navegador para mantener el SPA */
-        e.preventDefault();
-        setError("");
+    // Redirección si ya hay sesión activa
+    useEffect(() => {
+        if (isAuthenticated && role) {
+            navigate(getRedirectPathByRole(role), { replace: true });
+        }
+    }, [isAuthenticated, role, navigate]);
 
-        /* validacion minima antes de “simular” el submit */
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        clearError();
+
         if (!email.trim() || !password.trim()) {
             setError("Por favor completa el correo y la contraseña.");
             return;
         }
 
-        /* importante: deshabilitar el boton previene dobles submits en taps rapidos */
-        setIsSubmitting(true);
-        setTimeout(() => {
-            setIsSubmitting(false);
-            navigate("/dashboard");
-        }, 600);
+        try {
+            const data = await login({ email: email.trim(), password });
+            const userRole = data?.user?.role || "user";
+            navigate(getRedirectPathByRole(userRole));
+        } catch {
+            // El mensaje visible lo gestiona el store.
+        }
     };
 
     return (

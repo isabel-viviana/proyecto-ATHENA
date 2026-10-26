@@ -5,8 +5,10 @@ import { useShallow } from "zustand/react/shallow";
 import useProgressStore from "../../stores/useProgressStore";
 import DashboardStatsOverview from "./components/DashboardStatsOverview";
 import DashboardRecommended from "./components/DashboardRecommended";
+import useAuthStore from "../../stores/useAuthStore";
 
 const Dashboard = () => {
+    const user = useAuthStore((state) => state.user);
     // useShallow para suscribirse a los estados asíncronos y acción de useProgressStore
     const { fetchDashboardProgress, loading, error, dashboard } = useProgressStore(
         useShallow((state) => ({
@@ -86,7 +88,7 @@ const Dashboard = () => {
             {/* HEADER */}
             <header className="header">
                 <div className="user-welcome">
-                    <h1>¡Hola, Estudiante!</h1>
+                    <h1>¡Hola, {user?.full_name?.split(" ")[0] || "Estudiante"}!</h1>
                     <p>
                         Aquí tienes un resumen de tu progreso académico.
                         {totalSimulacros > 0 ? (

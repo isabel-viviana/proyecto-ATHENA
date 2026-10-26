@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
     BrowserRouter as Router,
     Routes,
@@ -55,7 +56,21 @@ import ForgotPassword from "./pages/authentications/forgot_password";
 import ResetPassword from "./pages/authentications/reset_password";
 import Payments from "./pages/subscriptions/payments";
 
+// Auth & Route Guards
+import useAuthStore from "./stores/useAuthStore";
+import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
+
 function App() {
+    const initAuth = useAuthStore((s) => s.initAuth);
+
+    useEffect(() => {
+        const unsubscribe = initAuth();
+        return () => {
+            if (typeof unsubscribe === "function") unsubscribe();
+        };
+    }, [initAuth]);
+
     return (
         <Router>
             <Routes>
@@ -69,7 +84,7 @@ function App() {
                 <Route path="/admin/login" element={<LoginAdmin />} />
 
                 {/* Rutas del Módulo Administrativo (AdminLayout) */}
-                <Route element={<AdminLayout />}>
+                <Route element={<AdminRoute><AdminLayout /></AdminRoute>}>
                     <Route path="/super/dashboard" element={<DashboardSuper />} />
                     <Route path="/admin/dashboard" element={<DashboardAdmin />} />
                     <Route path="/support/dashboard" element={<DashboardSupport />} />
@@ -80,7 +95,7 @@ function App() {
                 </Route>
 
                 {/* Rutas con Sidebar Estudiante (MainLayout) */}
-                <Route element={<MainLayout />}>
+                <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
                     <Route path="/dashboard" element={<Dashboard />} />
 
                     <Route path="/mock" element={<MockLayout />}>
