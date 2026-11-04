@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import useProgressStore from "../../stores/useProgressStore";
 import DashboardStatsOverview from "./components/DashboardStatsOverview";
 import DashboardRecommended from "./components/DashboardRecommended";
+import DashboardWelcomeCard from "./components/DashboardWelcomeCard";
 
 const Dashboard = () => {
     // useShallow para suscribirse a los estados asíncronos y acción de useProgressStore
@@ -107,6 +108,9 @@ const Dashboard = () => {
                 {/* Subcomponente que consume useProgressStore con useShallow (sin prop drilling) */}
                 <DashboardStatsOverview />
             </header>
+
+            {/* TARJETA DE BIENVENIDA (TAILWIND CSS) */}
+            <DashboardWelcomeCard />
 
             {/* GRID */}
             <div className="grid-layout">
