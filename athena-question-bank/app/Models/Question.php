@@ -89,5 +89,15 @@ class Question extends Model
     {
         return $this->belongsTo(SourceDocument::class, 'source_document_id');
     }
+
+    public function subject(): BelongsTo
+    {
+        return $this->belongsTo(Subject::class, 'subject_id');
+    }
+
+    public function topic(): BelongsTo
+    {
+        return $this->belongsTo(Topic::class, 'topic_id');
+    }
 }
 

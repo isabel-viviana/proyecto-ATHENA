@@ -7,6 +7,7 @@ import axios from 'axios';
  */
 const questionBankApi = axios.create({
     baseURL: import.meta.env.VITE_QUESTION_BANK_API_URL || 'http://127.0.0.1:8001/api/v1',
+    timeout: 180000,
     headers: {
         'Accept': 'application/json',
     },
