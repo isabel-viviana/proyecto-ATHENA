@@ -193,6 +193,10 @@ class GeminiQuestionExtractionService
                     $tag = $stimData['id_tag'] ?? ('STIM_' . ($stimuliCount + 1));
                     $subjectId = $this->resolveSubjectId($stimData['subject_name'] ?? 'Lectura Crítica');
 
+                    $sourcePage = isset($stimData['source_page']) && is_numeric($stimData['source_page']) && (int) $stimData['source_page'] > 0
+                        ? (int) $stimData['source_page']
+                        : null;
+
                     $stimulus = Stimulus::create([
                         'id'                 => (string) Str::uuid(),
                         'subject_id'         => $subjectId,
@@ -200,6 +204,7 @@ class GeminiQuestionExtractionService
                         'title'              => mb_substr($stimData['title'] ?? 'Texto de Lectura', 0, 255),
                         'content_text'       => $stimData['content_text'] ?? null,
                         'media_type'         => $this->normalizeMediaType($stimData['media_type'] ?? 'none'),
+                        'source_page'        => $sourcePage,
                         'instructions'       => $stimData['instructions'] ?? null,
                     ]);
 
@@ -237,6 +242,10 @@ class GeminiQuestionExtractionService
                         $unverifiedKeysCount++;
                     }
 
+                    $qSourcePage = isset($qData['source_page']) && is_numeric($qData['source_page']) && (int) $qData['source_page'] > 0
+                        ? (int) $qData['source_page']
+                        : null;
+
                     // Crear pregunta borrador
                     $question = Question::create([
                         'id'                 => (string) Str::uuid(),
@@ -249,6 +258,7 @@ class GeminiQuestionExtractionService
                         'source_document_id' => $document->id,
                         'order_in_group'     => (int) ($qData['order'] ?? ($questionsCount + 1)),
                         'statement'          => trim($qData['statement'] ?? 'Pregunta sin enunciado'),
+                        'source_page'        => $qSourcePage,
                         'difficulty'         => $this->normalizeDifficulty($qData['difficulty'] ?? 'medium'),
                         'explanation'        => $qData['explanation'] ?? null,
                         'key_status'         => $keyStatus,
@@ -367,12 +377,14 @@ Debes responder ÚNICAMENTE con un objeto JSON válido con la siguiente estructu
       "title": "Título de la lectura o gráfica",
       "content_text": "Texto íntegro del estímulo...",
       "media_type": "none",
+      "source_page": 1,
       "instructions": "RESPONDA LAS PREGUNTAS 1 A 2 DE ACUERDO CON EL SIGUIENTE TEXTO"
     }
   ],
   "questions": [
     {
       "order": 1,
+      "source_page": 1,
       "subject_name": "Lectura Crítica",
       "stimulus_tag": "STIM_1",
       "statement": "Enunciado de la pregunta...",

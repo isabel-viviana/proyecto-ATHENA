@@ -48,8 +48,14 @@ Route::prefix('v1')->group(function () {
             Route::get('/{id}/media', [MediaController::class, 'documentMedia']);
         });
 
-        // Recursos visuales (stream desde bucket privado icfes-media)
+        // Recursos visuales (stream desde bucket privado icfes-media y gestión de asociaciones)
         Route::get('/media', [MediaController::class, 'show']);
+        Route::prefix('media-assets')->group(function () {
+            Route::get('/', [MediaController::class, 'index']);
+            Route::post('/{id}/associate', [MediaController::class, 'associate']);
+            Route::post('/{id}/disassociate', [MediaController::class, 'disassociate']);
+            Route::delete('/{id}/association', [MediaController::class, 'disassociate']);
+        });
 
         // Revisión y Calibración Pedagógica de Reactivos
         Route::prefix('questions')->group(function () {

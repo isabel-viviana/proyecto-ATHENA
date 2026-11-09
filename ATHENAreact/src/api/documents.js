@@ -150,13 +150,42 @@ export const getMediaUrl = (path) => {
 };
 
 /**
- * Manifiesto de recursos visuales extraídos de un documento (incluye los pendientes de asociación).
+ * Recursos visuales de un documento registrados en media_assets (incluye pendientes, confirmados y destinos disponibles).
  * @param {string} documentId - UUID del documento
  */
 export const getDocumentMedia = async (documentId) => {
     const response = await questionBankApi.get(`/admin/documents/${documentId}/media`);
     return response.data;
 };
+
+/**
+ * Listar recursos visuales registrados en media_assets con filtros opcionales.
+ * @param {Object} [params] - { source_document_id, association_status }
+ */
+export const getMediaAssets = async (params = {}) => {
+    const response = await questionBankApi.get('/admin/media-assets', { params });
+    return response.data;
+};
+
+/**
+ * Confirmar la asociación de un recurso visual a un estímulo o pregunta del mismo documento.
+ * @param {string} assetId - UUID del media_asset
+ * @param {Object} payload - { target_type: 'stimulus'|'question', target_id: string }
+ */
+export const associateMediaAsset = async (assetId, payload) => {
+    const response = await questionBankApi.post(`/admin/media-assets/${assetId}/associate`, payload);
+    return response.data;
+};
+
+/**
+ * Desasociar de forma controlada un recurso visual, devolviéndolo a estado 'pending'.
+ * @param {string} assetId - UUID del media_asset
+ */
+export const disassociateMediaAsset = async (assetId) => {
+    const response = await questionBankApi.post(`/admin/media-assets/${assetId}/disassociate`);
+    return response.data;
+};
+
 
 
 

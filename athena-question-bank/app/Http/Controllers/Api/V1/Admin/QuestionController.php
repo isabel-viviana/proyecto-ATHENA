@@ -23,7 +23,7 @@ class QuestionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Question::with(['options', 'stimulus', 'subject', 'topic', 'sourceDocument']);
+        $query = Question::with(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic', 'sourceDocument']);
 
         // 1. Filtro por Estado
         // Estados posibles: draft, review, published, archived
@@ -63,12 +63,23 @@ class QuestionController extends Controller
             $query->where('statement', 'ILIKE', "%{$search}%");
         }
 
-        // 4. Ordenamiento
-        $query->orderBy('created_at', 'desc');
+        // 3.1 Filtro opcional por documento fuente
+        if ($request->filled('source_document_id') && Str::isUuid((string) $request->input('source_document_id'))) {
+            $query->where('source_document_id', (string) $request->input('source_document_id'));
+        }
+
+        // 4. Ordenamiento: por defecto conserva el orden original del cuadernillo (1 → N)
+        $sort = $request->input('sort', 'order_asc');
+        if ($sort === 'recent') {
+            $query->orderBy('created_at', 'desc');
+        } else {
+            $query->orderBy('order_in_group', 'asc')->orderBy('created_at', 'asc');
+        }
 
         // 5. Paginación
         $perPage = max(1, min((int) $request->input('per_page', 10), 100));
-        $paginated = $query->paginate($perPage);
+        $page = max(1, (int) $request->input('page', 1));
+        $paginated = $query->paginate($perPage, ['*'], 'page', $page);
 
         // 6. Estadísticas y conteos reales en base de datos Supabase
         $stats = [
@@ -88,6 +99,8 @@ class QuestionController extends Controller
                 'last_page'    => $paginated->lastPage(),
                 'per_page'     => $paginated->perPage(),
                 'total'        => $paginated->total(),
+                'from'         => $paginated->firstItem(),
+                'to'           => $paginated->lastItem(),
             ],
             'stats'   => $stats,
         ]);
@@ -100,7 +113,7 @@ class QuestionController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $question = Question::with(['options', 'stimulus', 'subject', 'topic', 'sourceDocument'])
+        $question = Question::with(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic', 'sourceDocument'])
             ->find($id);
 
         if (! $question) {
@@ -271,7 +284,7 @@ class QuestionController extends Controller
                 }
             });
 
-            $freshQuestion = Question::with(['options', 'stimulus', 'subject', 'topic'])->find($question->id);
+            $freshQuestion = Question::with(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic'])->find($question->id);
 
             return response()->json([
                 'success' => true,
@@ -362,7 +375,7 @@ class QuestionController extends Controller
         return response()->json([
             'success' => true,
             'message' => '¡Pregunta revisada y aprobada pedagógicamente para el banco oficial!',
-            'data'    => $question->fresh(['options', 'stimulus', 'subject', 'topic']),
+            'data'    => $question->fresh(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic']),
         ]);
     }
 
@@ -390,7 +403,7 @@ class QuestionController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'La pregunta fue rechazada y archivada. Los estímulos compartidos permanecen intactos.',
-            'data'    => $question->fresh(['options', 'stimulus']),
+            'data'    => $question->fresh(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets']),
         ]);
     }
 }

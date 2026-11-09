@@ -25,13 +25,15 @@ class Stimulus extends Model
         'content_text',
         'media_type',
         'media_path',
+        'source_page',
         'instructions',
         'created_at',
     ];
 
     protected $casts = [
-        'subject_id' => 'integer',
-        'created_at' => 'datetime',
+        'subject_id'  => 'integer',
+        'source_page' => 'integer',
+        'created_at'  => 'datetime',
     ];
 
     protected static function booted(): void
@@ -54,6 +56,21 @@ class Stimulus extends Model
     public function sourceDocument(): BelongsTo
     {
         return $this->belongsTo(SourceDocument::class, 'source_document_id');
+    }
+
+    public function mediaAssets(): HasMany
+    {
+        return $this->hasMany(MediaAsset::class, 'stimulus_id')
+            ->orderBy('page_number', 'asc')
+            ->orderBy('created_at', 'asc');
+    }
+
+    public function confirmedMediaAssets(): HasMany
+    {
+        return $this->hasMany(MediaAsset::class, 'stimulus_id')
+            ->where('association_status', 'confirmed')
+            ->orderBy('page_number', 'asc')
+            ->orderBy('created_at', 'asc');
     }
 }
 

@@ -100,7 +100,7 @@ class ExtractionController extends Controller
             ], 404);
         }
 
-        $questions = Question::with(['options', 'stimulus'])
+        $questions = Question::with(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets'])
             ->where('source_document_id', $id)
             ->orderBy('order_in_group', 'asc')
             ->get();

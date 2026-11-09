@@ -17,7 +17,7 @@ import {
     getQuestions,
     getDocumentMedia,
 } from "../../api/documents";
-import { MediaImage, StimulusMedia, QuestionMedia } from "../../components/admin/QuestionMedia";
+import { MediaImage, StimulusMedia, QuestionMedia, MediaAssociationPanel } from "../../components/admin/QuestionMedia";
 
 // Mapeo de áreas académicas oficiales del ICFES
 const SUBJECT_MAP = {
@@ -49,6 +49,11 @@ const QuestionCardItem = ({
     const isVerifiedKey = q.key_status === "verified";
     const isApproved = q.status === "review";
     const isArchived = q.status === "archived";
+    const hasConfirmedMedia =
+        (q.confirmed_media_assets && q.confirmed_media_assets.length > 0) ||
+        Boolean(q.question_image_path) ||
+        (q.stimulus?.confirmed_media_assets && q.stimulus.confirmed_media_assets.length > 0) ||
+        Boolean(q.stimulus?.media_path);
 
     return (
         <article className="qst-question-item-card">
@@ -82,6 +87,26 @@ const QuestionCardItem = ({
                     ) : (
                         <span className="qst-status-pill-draft">
                             <i className="fa-solid fa-clock-rotate-left"></i> Borrador IA
+                        </span>
+                    )}
+
+                    {hasConfirmedMedia && (
+                        <span
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "3px 9px",
+                                borderRadius: "999px",
+                                fontSize: "0.74rem",
+                                fontWeight: 700,
+                                background: "rgba(56, 189, 248, 0.14)",
+                                color: "#38bdf8",
+                                border: "1px solid rgba(56, 189, 248, 0.35)",
+                            }}
+                            title="Cuenta con recurso visual confirmado"
+                        >
+                            <i className="fa-solid fa-image"></i> Recurso Visual
                         </span>
                     )}
                 </div>
@@ -271,8 +296,11 @@ const Questions = () => {
         last_page: 1,
         per_page: 10,
         total: 0,
+        from: null,
+        to: null,
     });
     const [bankPage, setBankPage] = useState(1);
+    const [bankPerPage, setBankPerPage] = useState(10);
     const [bankSearch, setBankSearch] = useState("");
     const [bankSubjectFilter, setBankSubjectFilter] = useState("Todas");
     const [bankStatusFilter, setBankStatusFilter] = useState("official");
@@ -378,20 +406,26 @@ const Questions = () => {
 
     const fileInputRef = useRef(null);
 
-    // Recursos visuales extraídos del PDF (pendientes de asociación)
+    // Recursos visuales extraídos del PDF (pendientes y confirmados en media_assets)
     const [docMedia, setDocMedia] = useState(null);
-    useEffect(() => {
-        let cancelled = false;
-        if (activeTab !== "ai_extraction" || !selectedExtractionDocId) {
-            return undefined;
+    const fetchDocMedia = useCallback(async (docId) => {
+        if (!docId) {
+            setDocMedia(null);
+            return;
         }
-        getDocumentMedia(selectedExtractionDocId)
-            .then((res) => !cancelled && setDocMedia(res?.success ? res.data : null))
-            .catch(() => !cancelled && setDocMedia(null));
-        return () => {
-            cancelled = true;
-        };
-    }, [activeTab, selectedExtractionDocId]);
+        try {
+            const res = await getDocumentMedia(docId);
+            setDocMedia(res?.success ? res.data : null);
+        } catch {
+            setDocMedia(null);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === "ai_extraction" && selectedExtractionDocId) {
+            fetchDocMedia(selectedExtractionDocId);
+        }
+    }, [activeTab, selectedExtractionDocId, fetchDocMedia]);
 
     // =========================================================
     // 4. CARGA DE DOCUMENTOS DESDE EL BACKEND
@@ -431,14 +465,16 @@ const Questions = () => {
     // =========================================================
     // 4.1 CARGA DEL BANCO DE PREGUNTAS REAL DESDE LARAVEL
     // =========================================================
-    const fetchBankQuestions = useCallback(async (targetPage = 1) => {
+    const fetchBankQuestions = useCallback(async (targetPage = 1, customPerPage = null) => {
         setIsLoadingBank(true);
         setBankError(null);
         try {
             const page = targetPage || 1;
+            const perPageToUse = customPerPage || bankPerPage || 10;
             const params = {
                 page,
-                per_page: 10,
+                per_page: perPageToUse,
+                sort: "order_asc",
             };
             if (bankSearch.trim()) params.search = bankSearch.trim();
             if (bankSubjectFilter !== "Todas") params.subject_id = bankSubjectFilter;
@@ -446,7 +482,10 @@ const Questions = () => {
 
             const res = await getQuestions(params);
             if (res && res.success) {
-                setBankQuestions(res.data || []);
+                const items = res.data || [];
+                setBankQuestions(items);
+                // Expandir las opciones de la página actual por defecto para facilitar su lectura
+                setExpandedBankIds(new Set(items.map((item) => item.id)));
                 if (res.meta) {
                     setBankPagination(res.meta);
                     setBankPage(res.meta.current_page || page);
@@ -467,13 +506,39 @@ const Questions = () => {
         } finally {
             setIsLoadingBank(false);
         }
-    }, [bankSearch, bankSubjectFilter, bankStatusFilter]);
+    }, [bankSearch, bankSubjectFilter, bankStatusFilter, bankPerPage]);
 
     useEffect(() => {
         if (activeTab === "questions") {
             fetchBankQuestions(1);
         }
-    }, [activeTab, bankSubjectFilter, bankStatusFilter, fetchBankQuestions]);
+    }, [activeTab, bankSubjectFilter, bankStatusFilter, bankPerPage, fetchBankQuestions]);
+
+    // Agrupa preguntas consecutivas del banco que comparten el mismo estímulo respetando el orden 1 → 49
+    const groupedBankBlocks = useMemo(() => {
+        if (!bankQuestions || bankQuestions.length === 0) return [];
+        const blocks = [];
+        bankQuestions.forEach((q) => {
+            if (q.stimulus_id && q.stimulus) {
+                const lastBlock = blocks[blocks.length - 1];
+                if (lastBlock && lastBlock.type === "stimulus" && lastBlock.stimulus.id === q.stimulus_id) {
+                    lastBlock.questions.push(q);
+                } else {
+                    blocks.push({
+                        type: "stimulus",
+                        stimulus: q.stimulus,
+                        questions: [q],
+                    });
+                }
+            } else {
+                blocks.push({
+                    type: "standalone",
+                    question: q,
+                });
+            }
+        });
+        return blocks;
+    }, [bankQuestions]);
 
     // =========================================================
     // 5. MANEJADORES: SUBIDA DE DOCUMENTOS
@@ -1488,6 +1553,26 @@ const Questions = () => {
                                 </select>
                             </div>
 
+                            <div className="qst-select-wrap">
+                                <label className="qst-select-label" htmlFor="filter-bank-perpage">
+                                    Mostrar:
+                                </label>
+                                <select
+                                    id="filter-bank-perpage"
+                                    className="qst-select"
+                                    value={bankPerPage}
+                                    onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        setBankPerPage(val);
+                                        setBankPage(1);
+                                    }}
+                                >
+                                    <option value={10}>10 por página</option>
+                                    <option value={20}>20 por página</option>
+                                    <option value={50}>Todas (50 por página)</option>
+                                </select>
+                            </div>
+
                             <button
                                 className="qst-btn-excel"
                                 onClick={() => fetchBankQuestions(bankPage)}
@@ -1501,8 +1586,112 @@ const Questions = () => {
                         </div>
                     </section>
 
-                    {/* LISTADO DE PREGUNTAS REALES */}
+                    {/* LISTADO DE PREGUNTAS REALES CON PAGINACIÓN Y ESTÍMULOS COMPARTIDOS */}
                     <section className="qst-table-card">
+                        {/* BARRA SUPERIOR DE PAGINACIÓN Y CONTROLES DE PÁGINA */}
+                        {bankQuestions.length > 0 && (
+                            <div
+                                className="qst-table-footer"
+                                style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    flexWrap: "wrap",
+                                    gap: "12px",
+                                    borderTop: "none",
+                                    borderBottom: "1px solid var(--qst-border)",
+                                    background: "rgba(15, 23, 42, 0.55)",
+                                }}
+                            >
+                                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                                    <span>
+                                        Mostrando reactivos{" "}
+                                        <strong>
+                                            {bankPagination.from ?? 1}–{bankPagination.to ?? bankQuestions.length}
+                                        </strong>{" "}
+                                        de <strong>{bankPagination.total}</strong> en orden oficial (Pregunta #
+                                        {bankQuestions[0]?.order_in_group ?? 1} a #
+                                        {bankQuestions[bankQuestions.length - 1]?.order_in_group ?? bankQuestions.length})
+                                    </span>
+                                    <div style={{ display: "flex", gap: "6px" }}>
+                                        <button
+                                            type="button"
+                                            className="qst-btn-outline"
+                                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                                            onClick={() => setExpandedBankIds(new Set(bankQuestions.map((q) => q.id)))}
+                                        >
+                                            <i className="fa-solid fa-angles-down"></i> Expandir Opciones
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="qst-btn-outline"
+                                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                                            onClick={() => setExpandedBankIds(new Set())}
+                                        >
+                                            <i className="fa-solid fa-angles-up"></i> Colapsar Opciones
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
+                                        disabled={bankPagination.current_page <= 1 || isLoadingBank}
+                                        onClick={() => fetchBankQuestions(bankPagination.current_page - 1)}
+                                    >
+                                        <i className="fa-solid fa-chevron-left"></i> Anterior
+                                    </button>
+
+                                    {Array.from({ length: bankPagination.last_page || 1 }, (_, i) => i + 1).map((pageNum) => {
+                                        const isCurrent = pageNum === bankPagination.current_page;
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                type="button"
+                                                disabled={isLoadingBank}
+                                                onClick={() => fetchBankQuestions(pageNum)}
+                                                style={{
+                                                    minWidth: "32px",
+                                                    height: "30px",
+                                                    padding: "0 8px",
+                                                    borderRadius: "6px",
+                                                    fontSize: "0.8rem",
+                                                    fontWeight: 700,
+                                                    cursor: isLoadingBank ? "not-allowed" : "pointer",
+                                                    border: isCurrent
+                                                        ? "1px solid #22c55e"
+                                                        : "1px solid rgba(148, 163, 184, 0.25)",
+                                                    background: isCurrent
+                                                        ? "rgba(34, 197, 94, 0.2)"
+                                                        : "rgba(15, 23, 42, 0.6)",
+                                                    color: isCurrent ? "#4ade80" : "#cbd5e1",
+                                                }}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
+                                        disabled={bankPagination.current_page >= bankPagination.last_page || isLoadingBank}
+                                        onClick={() => fetchBankQuestions(bankPagination.current_page + 1)}
+                                    >
+                                        Siguiente <i className="fa-solid fa-chevron-right"></i>
+                                    </button>
+
+                                    <span style={{ fontSize: "0.8rem", color: "#94a3b8", marginLeft: "4px" }}>
+                                        Página <strong>{bankPagination.current_page}</strong> de{" "}
+                                        <strong>{bankPagination.last_page}</strong>
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
                         {isLoadingBank ? (
                             <div style={{ textAlign: "center", padding: "60px 20px" }}>
                                 <span className="qst-spinner" style={{ width: "36px", height: "36px", borderWidth: "3px" }}></span>
@@ -1511,41 +1700,78 @@ const Questions = () => {
                                 </p>
                             </div>
                         ) : bankQuestions.length > 0 ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px" }}>
-                                {bankQuestions.map((q) => {
-                                    const isExpanded = expandedBankIds.has(q.id);
-                                    return (
-                                        <div key={q.id}>
-                                            <QuestionCardItem
-                                                q={q}
-                                                isExpanded={isExpanded}
-                                                onToggleExpand={() => toggleBankExpand(q.id)}
-                                                onEdit={handleOpenEdit}
-                                                onApprove={handleApprove}
-                                                onReject={handlePromptReject}
-                                                isProcessingAction={actionLoadingId === q.id}
-                                            />
-                                            {/* Si tiene estímulo asociado y está expandido, mostrar vista previa del estímulo */}
-                                            {isExpanded && q.stimulus && (
-                                                <div style={{ marginTop: "8px", marginLeft: "12px", padding: "10px 14px", background: "rgba(59, 130, 246, 0.06)", borderLeft: "3px solid #3b82f6", borderRadius: "0 8px 8px 0", fontSize: "0.82rem" }}>
-                                                    <div style={{ color: "#60a5fa", fontWeight: 700, marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                                                        <i className="fa-solid fa-file-lines"></i>
-                                                        <span>Estímulo Asociado: {q.stimulus.title}</span>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "22px", padding: "18px" }}>
+                                {groupedBankBlocks.map((block, bIdx) => {
+                                    if (block.type === "stimulus") {
+                                        const stim = block.stimulus;
+                                        return (
+                                            <div key={`bank-stim-${stim.id}-${bIdx}`} className="qst-stimulus-container">
+                                                <div className="qst-stimulus-header">
+                                                    <div className="qst-stimulus-title-box">
+                                                        <i className="fa-solid fa-book-open-reader"></i>
+                                                        <div>
+                                                            <h3 className="qst-stimulus-title">
+                                                                {stim.title || "Estímulo de Lectura Compartido"}
+                                                            </h3>
+                                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                                                                Estímulo compartido • Pregunta(s) en esta página:{" "}
+                                                                {block.questions.map((q) => `#${q.order_in_group || "?"}`).join(", ")}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    {q.stimulus.instructions && (
-                                                        <div style={{ color: "#cbd5e1", fontStyle: "italic", marginBottom: "4px" }}>
-                                                            {q.stimulus.instructions}
-                                                        </div>
-                                                    )}
-                                                    {q.stimulus.content_text && (
-                                                        <div style={{ color: "#94a3b8", maxHeight: "100px", overflowY: "auto", lineHeight: "1.4" }}>
-                                                            {q.stimulus.content_text}
-                                                        </div>
-                                                    )}
-                                                    <StimulusMedia stimulus={q.stimulus} />
+                                                    <span className="qst-stimulus-badge-count">
+                                                        <i className="fa-solid fa-link"></i>
+                                                        {block.questions.length} reactivo(s) en vista
+                                                    </span>
                                                 </div>
-                                            )}
-                                        </div>
+
+                                                {stim.instructions && (
+                                                    <div className="qst-stimulus-instructions">
+                                                        <i className="fa-solid fa-circle-info"></i>
+                                                        <span>{stim.instructions}</span>
+                                                    </div>
+                                                )}
+
+                                                {stim.content_text && (
+                                                    <div className="qst-stimulus-content-box">
+                                                        {stim.content_text}
+                                                    </div>
+                                                )}
+
+                                                <div style={{ padding: "0 4px 8px" }}>
+                                                    <StimulusMedia stimulus={stim} />
+                                                </div>
+
+                                                <div className="qst-stimulus-questions-list">
+                                                    {block.questions.map((q) => (
+                                                        <QuestionCardItem
+                                                            key={q.id}
+                                                            q={q}
+                                                            isExpanded={expandedBankIds.has(q.id)}
+                                                            onToggleExpand={() => toggleBankExpand(q.id)}
+                                                            onEdit={handleOpenEdit}
+                                                            onApprove={handleApprove}
+                                                            onReject={handlePromptReject}
+                                                            isProcessingAction={actionLoadingId === q.id}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    const q = block.question;
+                                    return (
+                                        <QuestionCardItem
+                                            key={q.id}
+                                            q={q}
+                                            isExpanded={expandedBankIds.has(q.id)}
+                                            onToggleExpand={() => toggleBankExpand(q.id)}
+                                            onEdit={handleOpenEdit}
+                                            onApprove={handleApprove}
+                                            onReject={handlePromptReject}
+                                            isProcessingAction={actionLoadingId === q.id}
+                                        />
                                     );
                                 })}
                             </div>
@@ -1596,32 +1822,70 @@ const Questions = () => {
                         {/* PIE DE TABLA Y PAGINACIÓN REAL */}
                         <div className="qst-table-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                             <span>
-                                Mostrando <strong>{bankQuestions.length}</strong> de <strong>{bankPagination.total}</strong> reactivos registrados en Supabase
+                                Mostrando{" "}
+                                <strong>
+                                    {bankPagination.from ?? (bankQuestions.length > 0 ? 1 : 0)}–
+                                    {bankPagination.to ?? bankQuestions.length}
+                                </strong>{" "}
+                                de <strong>{bankPagination.total}</strong> reactivos registrados en Supabase
                             </span>
 
-                            {bankPagination.last_page > 1 && (
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            {bankPagination.last_page >= 1 && bankPagination.total > 0 && (
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                                     <button
                                         type="button"
                                         className="qst-btn-outline"
-                                        style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
                                         disabled={bankPagination.current_page <= 1 || isLoadingBank}
                                         onClick={() => fetchBankQuestions(bankPagination.current_page - 1)}
                                     >
                                         <i className="fa-solid fa-chevron-left"></i> Anterior
                                     </button>
-                                    <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>
-                                        Página <strong>{bankPagination.current_page}</strong> de <strong>{bankPagination.last_page}</strong>
-                                    </span>
+
+                                    {Array.from({ length: bankPagination.last_page || 1 }, (_, i) => i + 1).map((pageNum) => {
+                                        const isCurrent = pageNum === bankPagination.current_page;
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                type="button"
+                                                disabled={isLoadingBank}
+                                                onClick={() => fetchBankQuestions(pageNum)}
+                                                style={{
+                                                    minWidth: "32px",
+                                                    height: "30px",
+                                                    padding: "0 8px",
+                                                    borderRadius: "6px",
+                                                    fontSize: "0.8rem",
+                                                    fontWeight: 700,
+                                                    cursor: isLoadingBank ? "not-allowed" : "pointer",
+                                                    border: isCurrent
+                                                        ? "1px solid #22c55e"
+                                                        : "1px solid rgba(148, 163, 184, 0.25)",
+                                                    background: isCurrent
+                                                        ? "rgba(34, 197, 94, 0.2)"
+                                                        : "rgba(15, 23, 42, 0.6)",
+                                                    color: isCurrent ? "#4ade80" : "#cbd5e1",
+                                                }}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+
                                     <button
                                         type="button"
                                         className="qst-btn-outline"
-                                        style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
                                         disabled={bankPagination.current_page >= bankPagination.last_page || isLoadingBank}
                                         onClick={() => fetchBankQuestions(bankPagination.current_page + 1)}
                                     >
                                         Siguiente <i className="fa-solid fa-chevron-right"></i>
                                     </button>
+
+                                    <span style={{ fontSize: "0.82rem", color: "#94a3b8", marginLeft: "4px" }}>
+                                        Página <strong>{bankPagination.current_page}</strong> de{" "}
+                                        <strong>{bankPagination.last_page}</strong>
+                                    </span>
                                 </div>
                             )}
                         </div>
@@ -1897,37 +2161,17 @@ const Questions = () => {
                         </div>
                     ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                            {docMedia?.extracted && docMedia.images?.length > 0 && (
-                                <div className="qst-stimulus-container">
-                                    <div className="qst-stimulus-header">
-                                        <div className="qst-stimulus-title-box">
-                                            <i className="fa-solid fa-images"></i>
-                                            <div>
-                                                <h3 className="qst-stimulus-title">Recursos visuales detectados en el PDF</h3>
-                                                <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                                                    Sin asociación segura a pregunta o estímulo: pendientes de revisión administrativa.
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <span className="qst-stimulus-badge-count">{docMedia.images.length} recursos</span>
-                                    </div>
-                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 14, padding: 12 }}>
-                                        {docMedia.images.map((img) => (
-                                            <div key={`${img.page}-${img.pdf_object}`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                                {img.storage_path ? (
-                                                    <MediaImage path={img.storage_path} alt={`Recurso visual, página ${img.page}`} maxHeight={200} />
-                                                ) : (
-                                                    <div className="qst-media-missing">Formato no soportado para extracción automática.</div>
-                                                )}
-                                                <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                                                    Página {img.page} · {img.width}×{img.height}px ·{" "}
-                                                    <span style={{ color: "#fbbf24" }}>pendiente de asociación</span>
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                            <MediaAssociationPanel
+                                docMedia={docMedia}
+                                extractedQuestions={extractedQuestions}
+                                onAssociationChanged={async () => {
+                                    await Promise.all([
+                                        fetchDocMedia(selectedExtractionDocId),
+                                        loadExtractionData(selectedExtractionDocId),
+                                        fetchBankQuestions(bankPage),
+                                    ]);
+                                }}
+                            />
 
                             {/* 1. SECCIÓN DE ESTÍMULOS COMPARTIDOS */}
                             {groupedExtraction.stimuliGroups.map((group, groupIdx) => {
