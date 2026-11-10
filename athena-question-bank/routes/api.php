@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\V1\Admin\ExtractionController;
 use App\Http\Controllers\Api\V1\Admin\QuestionController;
 use App\Http\Controllers\Api\V1\Admin\CatalogController;
 use App\Http\Controllers\Api\V1\Admin\MediaController;
+use App\Http\Controllers\Api\V1\Student\StudentQuestionController;
+use App\Http\Controllers\Api\V1\Student\StudentAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -60,11 +62,41 @@ Route::prefix('v1')->group(function () {
         // Revisión y Calibración Pedagógica de Reactivos
         Route::prefix('questions')->group(function () {
             Route::get('/', [QuestionController::class, 'index']);
+            Route::post('/bulk-approve', [QuestionController::class, 'bulkApprove']);
             Route::get('/{id}', [QuestionController::class, 'show']);
             Route::put('/{id}', [QuestionController::class, 'update']);
             Route::post('/{id}/approve', [QuestionController::class, 'approve']);
             Route::post('/{id}/reject', [QuestionController::class, 'reject']);
         });
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Rutas de Estudiante (Autenticación, Práctica, Resolución y Progreso)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('student')->group(function () {
+        // Autenticación segura de estudiantes (integrada con usuarios ATHENA)
+        Route::prefix('auth')->group(function () {
+            Route::post('/login', [StudentAuthController::class, 'login']);
+            Route::get('/me', [StudentAuthController::class, 'me']);
+        });
+
+        // Catálogo de materias con preguntas publicadas
+        Route::get('/subjects', [StudentQuestionController::class, 'subjects']);
+
+        // Banco de preguntas y calificación
+        Route::prefix('questions')->group(function () {
+            Route::get('/', [StudentQuestionController::class, 'index']);
+            Route::get('/{id}', [StudentQuestionController::class, 'show']);
+            Route::post('/{id}/answer', [StudentQuestionController::class, 'submitAnswer']);
+        });
+
+        // Métricas de desempeño y progreso del estudiante
+        Route::get('/progress', [StudentQuestionController::class, 'progress']);
+    });
+
+    // Endpoint público para streaming de imágenes asociadas a preguntas y estímulos
+    Route::get('/media', [MediaController::class, 'show']);
 });
 

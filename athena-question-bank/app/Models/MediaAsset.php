@@ -29,6 +29,10 @@ class MediaAsset extends Model
         'question_id',
         'association_status',
         'associated_at',
+        'visual_transcription',
+        'visual_description',
+        'confidence',
+        'warnings',
         'created_at',
         'updated_at',
     ];
@@ -37,6 +41,7 @@ class MediaAsset extends Model
         'page_number'   => 'integer',
         'width'         => 'integer',
         'height'        => 'integer',
+        'confidence'    => 'float',
         'associated_at' => 'datetime',
         'created_at'    => 'datetime',
         'updated_at'    => 'datetime',

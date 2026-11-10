@@ -77,8 +77,8 @@ class MediaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = MediaAsset::with([
-            'stimulus:id,subject_id,source_document_id,title,media_type,source_page,instructions',
-            'question:id,subject_id,stimulus_id,source_document_id,order_in_group,statement,source_page,status',
+            'stimulus:id,subject_id,source_document_id,title,media_type,source_page,instructions,visual_transcription,visual_description',
+            'question:id,subject_id,stimulus_id,source_document_id,order_in_group,statement,source_page,status,visual_transcription,visual_description,extraction_warnings',
         ]);
 
         if ($request->filled('source_document_id')) {

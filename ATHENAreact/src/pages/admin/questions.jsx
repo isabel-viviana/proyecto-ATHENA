@@ -16,6 +16,7 @@ import {
     getTopicsCatalog,
     getQuestions,
     getDocumentMedia,
+    bulkApproveQuestions,
 } from "../../api/documents";
 import { MediaImage, StimulusMedia, QuestionMedia, MediaAssociationPanel } from "../../components/admin/QuestionMedia";
 
@@ -28,7 +29,7 @@ const SUBJECT_MAP = {
     5: { name: "Inglés", color: "#06b6d4", bg: "rgba(6, 182, 212, 0.12)", border: "rgba(6, 182, 212, 0.3)", icon: "fa-language" },
 };
 
-// Componente para renderizar cada pregunta extraída con opciones diferenciadas y acciones de revisión pedagógica
+// Componente para renderizar cada pregunta extraída como unidad completa pedagógica
 const QuestionCardItem = ({
     q,
     isExpanded,
@@ -37,6 +38,9 @@ const QuestionCardItem = ({
     onApprove,
     onReject,
     isProcessingAction,
+    isSelected = false,
+    onToggleSelect = null,
+    showCheckbox = false,
 }) => {
     const subjectInfo = SUBJECT_MAP[q.subject_id] || {
         name: "ICFES General",
@@ -47,8 +51,10 @@ const QuestionCardItem = ({
     };
 
     const isVerifiedKey = q.key_status === "verified";
+    const isPublished = q.status === "published";
     const isApproved = q.status === "review";
     const isArchived = q.status === "archived";
+    const sourcePage = q.source_page || q.stimulus?.source_page || null;
     const hasConfirmedMedia =
         (q.confirmed_media_assets && q.confirmed_media_assets.length > 0) ||
         Boolean(q.question_image_path) ||
@@ -56,13 +62,69 @@ const QuestionCardItem = ({
         Boolean(q.stimulus?.media_path);
 
     return (
-        <article className="qst-question-item-card">
+        <article
+            className={`qst-question-item-card ${isSelected ? "qst-question-item-card--selected" : ""}`}
+            style={{
+                border: isSelected ? "2px solid #22c55e" : undefined,
+                background: isSelected ? "rgba(34, 197, 94, 0.04)" : undefined,
+                transition: "all 0.2s ease",
+            }}
+        >
             {/* Header de la Pregunta */}
             <div className="qst-question-card-top">
-                <div className="qst-question-meta-left">
+                <div className="qst-question-meta-left" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {showCheckbox && (
+                        <label
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                cursor: "pointer",
+                                padding: "3px 8px",
+                                borderRadius: 6,
+                                background: isSelected ? "rgba(34, 197, 94, 0.18)" : "rgba(148, 163, 184, 0.1)",
+                                border: isSelected ? "1px solid #4ade80" : "1px solid rgba(148, 163, 184, 0.25)",
+                                userSelect: "none",
+                            }}
+                            title="Seleccionar para aprobación masiva"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => onToggleSelect && onToggleSelect(q.id)}
+                                style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#22c55e" }}
+                            />
+                            <span style={{ fontSize: "0.72rem", fontWeight: 700, color: isSelected ? "#4ade80" : "#94a3b8" }}>
+                                {isSelected ? "Seleccionada" : "Seleccionar"}
+                            </span>
+                        </label>
+                    )}
+
                     <span className="qst-question-num-tag">
                         Pregunta #{q.order_in_group || (q.id ? q.id.slice(0, 8) : "—")}
                     </span>
+
+                    {sourcePage && (
+                        <span
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "0.74rem",
+                                fontWeight: 600,
+                                color: "#94a3b8",
+                                background: "rgba(148, 163, 184, 0.12)",
+                                border: "1px solid rgba(148, 163, 184, 0.25)",
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                            }}
+                            title={`Página ${sourcePage} del cuadernillo original`}
+                        >
+                            <i className="fa-solid fa-file-lines" style={{ color: "#38bdf8" }}></i>
+                            Pág. {sourcePage}
+                        </span>
+                    )}
 
                     <span
                         className="qst-subject-badge"
@@ -76,7 +138,25 @@ const QuestionCardItem = ({
                         {subjectInfo.name}
                     </span>
 
-                    {isApproved ? (
+                    {isPublished ? (
+                        <span
+                            className="qst-status-pill-published"
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "3px 9px",
+                                borderRadius: "999px",
+                                fontSize: "0.74rem",
+                                fontWeight: 700,
+                                background: "rgba(168, 85, 247, 0.15)",
+                                color: "#c084fc",
+                                border: "1px solid rgba(168, 85, 247, 0.35)",
+                            }}
+                        >
+                            <i className="fa-solid fa-globe"></i> Publicada
+                        </span>
+                    ) : isApproved ? (
                         <span className="qst-status-pill-review">
                             <i className="fa-solid fa-circle-check"></i> Aprobada / Revisada
                         </span>
@@ -119,7 +199,7 @@ const QuestionCardItem = ({
                             <span>Clave Verificada</span>
                         </span>
                     ) : (
-                        <span className="qst-key-badge qst-key-badge--unverified" title="Clave no encontrada o pendiente de validación">
+                        <span className="qst-key-badge qst-key-badge--unverified" title="Clave pedagógica pendiente de validación (aprobación permitida)">
                             <i className="fa-solid fa-triangle-exclamation"></i>
                             <span>Clave no verificada</span>
                         </span>
@@ -242,9 +322,7 @@ const QuestionCardItem = ({
                         title={
                             isApproved
                                 ? "Pregunta ya aprobada para el banco"
-                                : isVerifiedKey
-                                ? "Aprobar pedagógicamente para el banco"
-                                : "Requiere clave verificada para aprobar"
+                                : "Aprobar pedagógicamente para el banco oficial"
                         }
                     >
                         {isProcessingAction ? (
@@ -402,6 +480,14 @@ const Questions = () => {
     const [actionLoadingId, setActionLoadingId] = useState(null);
     const [isConfirmRejectOpen, setIsConfirmRejectOpen] = useState(false);
     const [questionToReject, setQuestionToReject] = useState(null);
+
+    // =========================================================
+    // 3.3 ESTADOS: SELECCIÓN MÚLTIPLE Y APROBACIÓN MASIVA
+    // =========================================================
+    const [selectedQuestionIds, setSelectedQuestionIds] = useState(new Set());
+    const [isBulkApproving, setIsBulkApproving] = useState(false);
+    const [bulkSummary, setBulkSummary] = useState(null);
+    const [isBulkSummaryOpen, setIsBulkSummaryOpen] = useState(false);
 
 
     const fileInputRef = useRef(null);
@@ -901,15 +987,6 @@ const Questions = () => {
         setExtractionError(null);
         setExtractionSuccess(null);
 
-        // Validación preventiva en cliente para regla pedagógica:
-        if (q.key_status !== "verified") {
-            setExtractionError(
-                `No se puede aprobar la Pregunta #${q.order_in_group || q.id.slice(0, 8)}: La clave de respuesta no está verificada. Por favor haz clic en "Editar pregunta", selecciona la opción correcta y marca la clave como verificada antes de aprobar.`
-            );
-            setActionLoadingId(null);
-            return;
-        }
-
         try {
             const res = await approveQuestion(q.id);
             if (res && res.success) {
@@ -930,6 +1007,90 @@ const Questions = () => {
             setExtractionError(msg);
         } finally {
             setActionLoadingId(null);
+        }
+    };
+
+    // Controladores de Selección Múltiple y Aprobación Masiva
+    const handleToggleSelectQuestion = (id) => {
+        setSelectedQuestionIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAll = () => {
+        const allIds = new Set(extractedQuestions.map((q) => q.id));
+        setSelectedQuestionIds(allIds);
+    };
+
+    const handleDeselectAll = () => {
+        setSelectedQuestionIds(new Set());
+    };
+
+    const handleSelectAllExceptExcluded = () => {
+        const allIds = extractedQuestions.map((q) => q.id);
+        const next = new Set();
+        allIds.forEach((id) => {
+            if (!selectedQuestionIds.has(id)) {
+                next.add(id);
+            }
+        });
+        setSelectedQuestionIds(next);
+    };
+
+    const handleBulkApprove = async () => {
+        if (selectedQuestionIds.size === 0) return;
+
+        setIsBulkApproving(true);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+
+        const idsToApprove = Array.from(selectedQuestionIds);
+
+        try {
+            const res = await bulkApproveQuestions(idsToApprove);
+            if (res && res.success) {
+                const data = res.data || {};
+                setBulkSummary(data);
+                setIsBulkSummaryOpen(true);
+
+                const approvedSet = new Set(data.approved_ids || []);
+                setExtractedQuestions((prev) =>
+                    prev.map((item) =>
+                        approvedSet.has(item.id) ? { ...item, status: "review" } : item
+                    )
+                );
+                setBankQuestions((prev) =>
+                    prev.map((item) =>
+                        approvedSet.has(item.id) ? { ...item, status: "review" } : item
+                    )
+                );
+
+                // Quitar de la selección las aprobadas
+                setSelectedQuestionIds((prev) => {
+                    const next = new Set(prev);
+                    approvedSet.forEach((id) => next.delete(id));
+                    return next;
+                });
+
+                setExtractionSuccess(
+                    `Aprobación masiva finalizada: ${data.total_approved} preguntas aprobadas exitosamente.`
+                );
+                fetchBankQuestions();
+            } else {
+                setExtractionError(res?.message || "Error al procesar la aprobación masiva.");
+            }
+        } catch (err) {
+            console.error("Error en aprobación masiva:", err);
+            const msg = err.response?.data?.message || err.message || "Fallo al ejecutar la aprobación masiva.";
+            setExtractionError(msg);
+        } finally {
+            setIsBulkApproving(false);
         }
     };
 
@@ -2173,6 +2334,113 @@ const Questions = () => {
                                 }}
                             />
 
+                            {/* BARRA DE APROBACIÓN MASIVA Y SELECCIÓN MÚLTIPLE (FASE 6) */}
+                            <div
+                                className="qst-bulk-approval-toolbar"
+                                style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 12,
+                                    padding: "14px 18px",
+                                    borderRadius: 12,
+                                    background: "rgba(15, 23, 42, 0.95)",
+                                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                                    boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
+                                }}
+                            >
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: "0.86rem", color: "#f8fafc", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                        <i className="fa-solid fa-list-check" style={{ color: "#38bdf8" }}></i>
+                                        Selección Múltiple:
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        onClick={handleSelectAll}
+                                        style={{ fontSize: "0.78rem", padding: "5px 12px", background: "rgba(56, 189, 248, 0.08)" }}
+                                        title="Marca todas las preguntas del documento para aprobación masiva"
+                                    >
+                                        <i className="fa-solid fa-check-double" style={{ color: "#38bdf8" }}></i>
+                                        <span>Seleccionar todas ({extractedQuestions.length})</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        onClick={handleDeselectAll}
+                                        style={{ fontSize: "0.78rem", padding: "5px 12px" }}
+                                        title="Quita todas las marcas de selección"
+                                    >
+                                        <i className="fa-solid fa-xmark"></i>
+                                        <span>Deseleccionar todas</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        onClick={handleSelectAllExceptExcluded}
+                                        style={{ fontSize: "0.78rem", padding: "5px 12px" }}
+                                        title="Invierte la selección actual para aprobar todas salvo las excluidas"
+                                    >
+                                        <i className="fa-solid fa-arrows-rotate"></i>
+                                        <span>Seleccionar excepto excluidas</span>
+                                    </button>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                    <span
+                                        style={{
+                                            fontSize: "0.84rem",
+                                            fontWeight: 700,
+                                            color: selectedQuestionIds.size > 0 ? "#4ade80" : "#94a3b8",
+                                            background: selectedQuestionIds.size > 0 ? "rgba(34, 197, 94, 0.12)" : "rgba(148, 163, 184, 0.1)",
+                                            padding: "4px 10px",
+                                            borderRadius: 6,
+                                            border: selectedQuestionIds.size > 0 ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(148, 163, 184, 0.2)",
+                                        }}
+                                    >
+                                        {selectedQuestionIds.size} de {extractedQuestions.length} seleccionadas
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleBulkApprove}
+                                        disabled={selectedQuestionIds.size === 0 || isBulkApproving}
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: 8,
+                                            padding: "9px 20px",
+                                            background: selectedQuestionIds.size > 0 ? "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)" : "rgba(148, 163, 184, 0.2)",
+                                            color: selectedQuestionIds.size > 0 ? "#ffffff" : "#64748b",
+                                            border: selectedQuestionIds.size > 0 ? "1px solid #4ade80" : "1px solid rgba(148, 163, 184, 0.3)",
+                                            borderRadius: 8,
+                                            fontWeight: 800,
+                                            fontSize: "0.86rem",
+                                            cursor: selectedQuestionIds.size > 0 && !isBulkApproving ? "pointer" : "not-allowed",
+                                            boxShadow: selectedQuestionIds.size > 0 ? "0 4px 16px rgba(34, 197, 94, 0.4)" : "none",
+                                            transition: "all 0.2s ease",
+                                        }}
+                                        title={selectedQuestionIds.size === 0 ? "Selecciona una o más preguntas para aprobar" : "Aprobar todas las preguntas seleccionadas para el banco"}
+                                    >
+                                        {isBulkApproving ? (
+                                            <>
+                                                <span className="qst-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span>
+                                                <span>Aprobando masivamente...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="fa-solid fa-circle-check"></i>
+                                                <span>APROBAR TODAS LAS SELECCIONADAS ({selectedQuestionIds.size})</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+
                             {/* 1. SECCIÓN DE ESTÍMULOS COMPARTIDOS */}
                             {groupedExtraction.stimuliGroups.map((group, groupIdx) => {
                                 const stim = group.stimulus;
@@ -2224,6 +2492,9 @@ const Questions = () => {
                                                     onApprove={handleApprove}
                                                     onReject={handlePromptReject}
                                                     isProcessingAction={actionLoadingId === q.id}
+                                                    showCheckbox={true}
+                                                    isSelected={selectedQuestionIds.has(q.id)}
+                                                    onToggleSelect={handleToggleSelectQuestion}
                                                 />
                                             ))}
                                         </div>
@@ -2250,6 +2521,9 @@ const Questions = () => {
                                             onApprove={handleApprove}
                                             onReject={handlePromptReject}
                                             isProcessingAction={actionLoadingId === q.id}
+                                            showCheckbox={true}
+                                            isSelected={selectedQuestionIds.has(q.id)}
+                                            onToggleSelect={handleToggleSelectQuestion}
                                         />
                                     ))}
                                 </div>
@@ -3127,6 +3401,111 @@ const Questions = () => {
                                         <span>Confirmar Rechazo</span>
                                     </>
                                 )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Modal de Resumen de Aprobación Masiva */}
+            {isBulkSummaryOpen && bulkSummary && (
+                <div className="qst-modal-overlay" onClick={() => setIsBulkSummaryOpen(false)}>
+                    <div
+                        className="qst-modal-card"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ maxWidth: 640 }}
+                    >
+                        <div className="qst-modal-header">
+                            <div className="qst-modal-title">
+                                <i className="fa-solid fa-list-check" style={{ color: "#22c55e", marginRight: 8 }}></i>
+                                <span>Reporte de Aprobación Masiva</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="qst-modal-close-btn"
+                                onClick={() => setIsBulkSummaryOpen(false)}
+                            >
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <div className="qst-modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                            <div style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(3, 1fr)",
+                                gap: 12,
+                                textAlign: "center",
+                            }}>
+                                <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "12px", borderRadius: 8, border: "1px solid rgba(148, 163, 184, 0.2)" }}>
+                                    <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#f8fafc" }}>{bulkSummary.total_received}</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Total Evaluadas</div>
+                                </div>
+                                <div style={{ background: "rgba(34, 197, 94, 0.1)", padding: "12px", borderRadius: 8, border: "1px solid rgba(34, 197, 94, 0.3)" }}>
+                                    <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#4ade80" }}>{bulkSummary.total_approved}</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#86efac" }}>Aprobadas</div>
+                                </div>
+                                <div style={{ background: "rgba(239, 68, 68, 0.1)", padding: "12px", borderRadius: 8, border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+                                    <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#f87171" }}>{bulkSummary.total_rejected}</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#fca5a5" }}>Rechazadas</div>
+                                </div>
+                            </div>
+
+                            {bulkSummary.total_rejected > 0 && bulkSummary.rejected && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <h4 style={{ color: "#fca5a5", fontSize: "0.88rem", margin: "4px 0 0 0", display: "flex", alignItems: "center", gap: 6 }}>
+                                        <i className="fa-solid fa-triangle-exclamation"></i>
+                                        Detalle de reactivos que no pudieron ser aprobados:
+                                    </h4>
+                                    <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                                        {bulkSummary.rejected.map((rej, idx) => (
+                                            <div
+                                                key={rej.id || idx}
+                                                style={{
+                                                    padding: "8px 12px",
+                                                    borderRadius: 6,
+                                                    background: "rgba(239, 68, 68, 0.08)",
+                                                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                                                    fontSize: "0.8rem",
+                                                    color: "#fecaca",
+                                                    display: "flex",
+                                                    justifyContent: "space-between",
+                                                    alignItems: "center",
+                                                }}
+                                            >
+                                                <span>
+                                                    <strong>Pregunta #{rej.order || "—"}:</strong> {rej.reason}
+                                                </span>
+                                                <span style={{ fontSize: "0.72rem", color: "#94a3b8", fontFamily: "monospace" }}>
+                                                    {rej.id ? rej.id.slice(0, 8) : ""}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {bulkSummary.total_approved > 0 && (
+                                <div style={{
+                                    padding: "10px 14px",
+                                    borderRadius: 8,
+                                    background: "rgba(34, 197, 94, 0.08)",
+                                    border: "1px solid rgba(34, 197, 94, 0.2)",
+                                    color: "#86efac",
+                                    fontSize: "0.82rem",
+                                }}>
+                                    <i className="fa-solid fa-circle-check" style={{ marginRight: 6 }}></i>
+                                    Las preguntas aprobadas han pasado al banco oficial con estado <strong>review</strong> listas para calibración pedagógica.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="qst-modal-footer">
+                            <button
+                                type="button"
+                                className="qst-btn-save"
+                                style={{ background: "#3b82f6" }}
+                                onClick={() => setIsBulkSummaryOpen(false)}
+                            >
+                                Entendido
                             </button>
                         </div>
                     </div>

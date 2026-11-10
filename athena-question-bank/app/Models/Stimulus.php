@@ -27,6 +27,8 @@ class Stimulus extends Model
         'media_path',
         'source_page',
         'instructions',
+        'visual_transcription',
+        'visual_description',
         'created_at',
     ];
 

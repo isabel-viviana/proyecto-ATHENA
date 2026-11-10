@@ -3,6 +3,7 @@ import Zorrito2D from "../../assets/images/Zorrito2D.png";
 import ZorritoLogo from "../../assets/images/Zorrito6.png";
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { studentLogin } from "../../api/studentQuestions";
 
 const LoginStudent = () => {
     /* estado local del formulario: se usa para validar y controlar el boton */
@@ -15,23 +16,36 @@ const LoginStudent = () => {
     /* navegacion post submit: mantiene la vista declarativa con react-router */
     const navigate = useNavigate();
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         /* evita recarga del navegador para mantener el SPA */
         e.preventDefault();
         setError("");
 
-        /* validacion minima antes de “simular” el submit */
+        /* validacion minima antes del submit */
         if (!email.trim() || !password.trim()) {
             setError("Por favor completa el correo y la contraseña.");
             return;
         }
 
-        /* importante: deshabilitar el boton previene dobles submits en taps rapidos */
         setIsSubmitting(true);
-        setTimeout(() => {
+        try {
+            const res = await studentLogin(email.trim(), password);
+            if (res && res.success && res.token) {
+                localStorage.setItem("athena_token", res.token);
+                localStorage.setItem("athena_student", JSON.stringify(res.student));
+                navigate("/practices");
+            } else {
+                setError(res?.message || "No se pudo verificar la cuenta.");
+            }
+        } catch (err) {
+            console.error("Error en login de estudiante:", err);
+            setError(
+                err?.response?.data?.message ||
+                "Credenciales no válidas. Verifica tu correo y contraseña."
+            );
+        } finally {
             setIsSubmitting(false);
-            navigate("/dashboard");
-        }, 600);
+        }
     };
 
     return (

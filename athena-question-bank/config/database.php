@@ -114,6 +114,20 @@ return [
             'sslmode' => env('QB_DB_SSLMODE', 'require'),
         ],
 
+        'athena_core' => [
+            'driver' => 'mysql',
+            'host' => env('ATHENA_CORE_DB_HOST', '127.0.0.1'),
+            'port' => env('ATHENA_CORE_DB_PORT', '3306'),
+            'database' => env('ATHENA_CORE_DB_DATABASE', 'Athena'),
+            'username' => env('ATHENA_CORE_DB_USERNAME', 'root'),
+            'password' => env('ATHENA_CORE_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

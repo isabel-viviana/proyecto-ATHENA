@@ -186,6 +186,17 @@ export const disassociateMediaAsset = async (assetId) => {
     return response.data;
 };
 
+/**
+ * Aprobar pedagógicamente de forma masiva un conjunto de preguntas seleccionadas.
+ * @param {string[]} questionIds - Lista de UUIDs de las preguntas a aprobar
+ */
+export const bulkApproveQuestions = async (questionIds) => {
+    const response = await questionBankApi.post('/admin/questions/bulk-approve', {
+        question_ids: questionIds,
+    });
+    return response.data;
+};
+
 
 
 

@@ -23,7 +23,16 @@ class QuestionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Question::with(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic', 'sourceDocument']);
+        $query = Question::with([
+            'options',
+            'stimulus.confirmedMediaAssets',
+            'stimulus.mediaAssets',
+            'confirmedMediaAssets',
+            'mediaAssets',
+            'subject',
+            'topic',
+            'sourceDocument',
+        ]);
 
         // 1. Filtro por Estado
         // Estados posibles: draft, review, published, archived
@@ -342,28 +351,31 @@ class QuestionController extends Controller
             }
         }
 
-        // Criterio 3: Clave verificada explícita
-        if ($question->key_status !== 'verified') {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se puede aprobar la pregunta: la clave de respuesta no ha sido verificada. Debe seleccionar la opción correcta y validar la clave antes de aprobar.',
-            ], 422);
+        // Criterio 3: Clave verificada o no verificada (Regla 8: validación flexible)
+        if ($question->key_status === 'verified') {
+            $correctOptions = $options->where('is_correct', true);
+            if ($correctOptions->count() !== 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "No se puede aprobar la pregunta: al estar marcada como verificada, debe existir exactamente una opción correcta (actualmente hay {$correctOptions->count()}).",
+                ], 422);
+            }
         }
+        // Si es 'unverified', se permite la aprobación pedagógica manteniendo 'unverified' sin inventar respuesta.
 
-        // Criterio 4: Debe existir exactamente una opción correcta
-        $correctOptions = $options->where('is_correct', true);
-        if ($correctOptions->count() !== 1) {
-            return response()->json([
-                'success' => false,
-                'message' => "No se puede aprobar la pregunta: debe existir exactamente una opción correcta verificada (actualmente hay {$correctOptions->count()}).",
-            ], 422);
-        }
-
-        // Criterio 5: Materia válida
+        // Criterio 4: Materia válida
         if (empty($question->subject_id) || $question->subject_id < 1 || $question->subject_id > 5) {
             return response()->json([
                 'success' => false,
                 'message' => 'No se puede aprobar la pregunta: el área académica no es válida dentro del marco oficial ICFES.',
+            ], 422);
+        }
+
+        // Criterio 5: Si tiene estímulo, validar integridad
+        if ($question->stimulus_id && ! $question->stimulus) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede aprobar la pregunta: el estímulo referenciado no existe.',
             ], 422);
         }
 
@@ -376,6 +388,134 @@ class QuestionController extends Controller
             'success' => true,
             'message' => '¡Pregunta revisada y aprobada pedagógicamente para el banco oficial!',
             'data'    => $question->fresh(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic']),
+        ]);
+    }
+
+    /**
+     * Aprueba pedagógicamente múltiples preguntas seleccionadas.
+     * Soporta éxito parcial: si una pregunta falla validaciones, no revierte las demás.
+     *
+     * POST /api/v1/admin/questions/bulk-approve
+     */
+    public function bulkApprove(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'question_ids'   => 'required|array|min:1',
+            'question_ids.*' => 'required|uuid',
+        ]);
+
+        $ids = $validated['question_ids'];
+        $approvedIds = [];
+        $rejected = [];
+
+        foreach ($ids as $id) {
+            $question = Question::with(['options', 'stimulus'])->find($id);
+
+            if (! $question) {
+                $rejected[] = [
+                    'id'     => $id,
+                    'order'  => null,
+                    'reason' => 'Pregunta no encontrada.',
+                ];
+                continue;
+            }
+
+            // Validación de enunciado
+            if (empty(trim($question->statement)) || mb_strlen(trim($question->statement)) < 10) {
+                $rejected[] = [
+                    'id'     => $id,
+                    'order'  => $question->order_in_group,
+                    'reason' => 'El enunciado debe tener al menos 10 caracteres.',
+                ];
+                continue;
+            }
+
+            // Validación de opciones
+            $options = $question->options;
+            if ($options->count() < 4) {
+                $rejected[] = [
+                    'id'     => $id,
+                    'order'  => $question->order_in_group,
+                    'reason' => "Requiere al menos 4 opciones de respuesta (tiene {$options->count()}).",
+                ];
+                continue;
+            }
+
+            $hasEmptyOption = false;
+            foreach ($options as $opt) {
+                if (empty(trim($opt->option_text))) {
+                    $rejected[] = [
+                        'id'     => $id,
+                        'order'  => $question->order_in_group,
+                        'reason' => "La opción {$opt->option_letter} no contiene texto.",
+                    ];
+                    $hasEmptyOption = true;
+                    break;
+                }
+            }
+            if ($hasEmptyOption) {
+                continue;
+            }
+
+            // Validación de materia
+            if (empty($question->subject_id) || $question->subject_id < 1 || $question->subject_id > 5) {
+                $rejected[] = [
+                    'id'     => $id,
+                    'order'  => $question->order_in_group,
+                    'reason' => 'El área académica asignada no es válida.',
+                ];
+                continue;
+            }
+
+            // Validación de clave (flexible)
+            if ($question->key_status === 'verified') {
+                $correctCount = $options->where('is_correct', true)->count();
+                if ($correctCount !== 1) {
+                    $rejected[] = [
+                        'id'     => $id,
+                        'order'  => $question->order_in_group,
+                        'reason' => "Marcada como verificada pero tiene {$correctCount} opciones correctas (debe ser 1).",
+                    ];
+                    continue;
+                }
+            }
+
+            // Si tiene estímulo, verificar que el estímulo exista
+            if ($question->stimulus_id && ! $question->stimulus) {
+                $rejected[] = [
+                    'id'     => $id,
+                    'order'  => $question->order_in_group,
+                    'reason' => 'El estímulo referenciado no existe en el sistema.',
+                ];
+                continue;
+            }
+
+            try {
+                $question->update(['status' => 'review']);
+                $approvedIds[] = $question->id;
+            } catch (Throwable $e) {
+                $rejected[] = [
+                    'id'     => $id,
+                    'order'  => $question->order_in_group,
+                    'reason' => 'Error al guardar estado: ' . $e->getMessage(),
+                ];
+            }
+        }
+
+        $totalReceived = count($ids);
+        $totalApproved = count($approvedIds);
+        $totalRejected = count($rejected);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Aprobación masiva procesada: {$totalApproved} aprobadas, {$totalRejected} rechazadas de {$totalReceived} seleccionadas.",
+            'data'    => [
+                'total_received' => $totalReceived,
+                'total_approved' => $totalApproved,
+                'total_rejected' => $totalRejected,
+                'approved_ids'   => $approvedIds,
+                'rejected'       => $rejected,
+            ],
         ]);
     }
 

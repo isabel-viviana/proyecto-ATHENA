@@ -183,10 +183,86 @@ export const MediaImage = ({ path, alt, maxHeight = 360, meta = null, showZoomBu
 };
 
 /**
+ * Cuadro de anotaciones visuales multimodales de Gemini (transcripción textual de viñetas/gráficos y descripción visual).
+ */
+export const VisualAnnotationBox = ({ transcription, description, warnings }) => {
+    const [expanded, setExpanded] = useState(true);
+
+    if (!transcription && !description && !warnings) return null;
+
+    return (
+        <div
+            style={{
+                marginTop: 8,
+                borderRadius: 8,
+                background: "rgba(15, 23, 42, 0.75)",
+                border: "1px solid rgba(56, 189, 248, 0.25)",
+                overflow: "hidden",
+                fontSize: "0.82rem",
+            }}
+        >
+            <div
+                onClick={() => setExpanded(!expanded)}
+                style={{
+                    padding: "6px 12px",
+                    background: "rgba(56, 189, 248, 0.1)",
+                    borderBottom: expanded ? "1px solid rgba(56, 189, 248, 0.2)" : "none",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    userSelect: "none",
+                }}
+            >
+                <span style={{ color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                    Análisis Multimodal Gemini (Transcripción y Descripción)
+                </span>
+                <i className={`fa-solid ${expanded ? "fa-chevron-up" : "fa-chevron-down"}`} style={{ color: "#94a3b8", fontSize: "0.75rem" }}></i>
+            </div>
+
+            {expanded && (
+                <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {transcription && (
+                        <div>
+                            <div style={{ color: "#7dd3fc", fontWeight: 600, fontSize: "0.76rem", marginBottom: 3, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                <i className="fa-solid fa-align-left"></i> Transcripción de texto visible (viñetas, tablas, diálogos):
+                            </div>
+                            <div style={{ color: "#f1f5f9", background: "rgba(0, 0, 0, 0.3)", padding: "8px 10px", borderRadius: 6, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                                {transcription}
+                            </div>
+                        </div>
+                    )}
+
+                    {description && (
+                        <div>
+                            <div style={{ color: "#a5b4fc", fontWeight: 600, fontSize: "0.76rem", marginBottom: 3, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                <i className="fa-solid fa-eye"></i> Descripción visual de la escena / composición:
+                            </div>
+                            <div style={{ color: "#cbd5e1", background: "rgba(0, 0, 0, 0.3)", padding: "8px 10px", borderRadius: 6, lineHeight: 1.5 }}>
+                                {description}
+                            </div>
+                        </div>
+                    )}
+
+                    {warnings && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#fbbf24", background: "rgba(245, 158, 11, 0.1)", padding: "6px 10px", borderRadius: 6, fontSize: "0.76rem" }}>
+                            <i className="fa-solid fa-triangle-exclamation"></i>
+                            <span>{warnings}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+/**
  * Bloque visual de un estímulo:
  * 1) Si tiene recursos confirmados en media_assets (confirmed_media_assets), los muestra.
  * 2) Si tiene media_path directo, lo muestra.
  * 3) Si declara media_type != 'none' sin recurso confirmado, muestra aviso de pendiente.
+ * 4) Muestra transcripción visual y descripción de escena reconocidas por Gemini.
  */
 export const StimulusMedia = ({ stimulus }) => {
     if (!stimulus) return null;
@@ -195,6 +271,9 @@ export const StimulusMedia = ({ stimulus }) => {
         stimulus.confirmed_media_assets ||
         stimulus.confirmedMediaAssets ||
         [];
+
+    const transcription = stimulus.visual_transcription || confirmedAssets[0]?.visual_transcription;
+    const description = stimulus.visual_description || confirmedAssets[0]?.visual_description;
 
     if (confirmedAssets.length > 0) {
         return (
@@ -226,37 +305,49 @@ export const StimulusMedia = ({ stimulus }) => {
                         />
                     </div>
                 ))}
+                <VisualAnnotationBox transcription={transcription} description={description} />
             </div>
         );
     }
 
     if (stimulus.media_path) {
-        return <MediaImage path={stimulus.media_path} alt={stimulus.title || "Recurso visual del estímulo"} />;
+        return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+                <MediaImage path={stimulus.media_path} alt={stimulus.title || "Recurso visual del estímulo"} />
+                <VisualAnnotationBox transcription={transcription} description={description} />
+            </div>
+        );
     }
 
     if (stimulus.media_type && stimulus.media_type !== "none") {
         return (
-            <div
-                className="qst-media-pending"
-                style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    padding: "8px 12px",
-                    marginTop: 6,
-                    borderRadius: 8,
-                    background: "rgba(245,158,11,.1)",
-                    border: "1px dashed rgba(245,158,11,.5)",
-                    color: "#fbbf24",
-                    fontSize: "0.8rem",
-                }}
-            >
-                <i className="fa-solid fa-triangle-exclamation"></i>
-                <span>
-                    Este estímulo incluye un recurso visual ({stimulus.media_type}) <strong>pendiente de asociación</strong>. Requiere revisión administrativa.
-                </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                <div
+                    className="qst-media-pending"
+                    style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(245,158,11,.1)",
+                        border: "1px dashed rgba(245,158,11,.5)",
+                        color: "#fbbf24",
+                        fontSize: "0.8rem",
+                    }}
+                >
+                    <i className="fa-solid fa-triangle-exclamation"></i>
+                    <span>
+                        Este estímulo incluye un recurso visual ({stimulus.media_type}) <strong>pendiente de confirmación</strong>.
+                    </span>
+                </div>
+                <VisualAnnotationBox transcription={transcription} description={description} />
             </div>
         );
+    }
+
+    if (transcription || description) {
+        return <VisualAnnotationBox transcription={transcription} description={description} />;
     }
 
     return null;
@@ -265,7 +356,7 @@ export const StimulusMedia = ({ stimulus }) => {
 /**
  * Imagen propia de la pregunta:
  * Muestra los recursos confirmados en media_assets (confirmed_media_assets)
- * o question_image_path si existe.
+ * o question_image_path si existe, más transcripción y descripción multimodal.
  */
 export const QuestionMedia = ({ question }) => {
     if (!question) return null;
@@ -274,6 +365,10 @@ export const QuestionMedia = ({ question }) => {
         question.confirmed_media_assets ||
         question.confirmedMediaAssets ||
         [];
+
+    const transcription = question.visual_transcription || confirmedAssets[0]?.visual_transcription;
+    const description = question.visual_description || confirmedAssets[0]?.visual_description;
+    const warnings = question.extraction_warnings || confirmedAssets[0]?.warnings;
 
     if (confirmedAssets.length > 0) {
         return (
@@ -303,12 +398,22 @@ export const QuestionMedia = ({ question }) => {
                         />
                     </div>
                 ))}
+                <VisualAnnotationBox transcription={transcription} description={description} warnings={warnings} />
             </div>
         );
     }
 
     if (question.question_image_path) {
-        return <MediaImage path={question.question_image_path} alt="Imagen de la pregunta" />;
+        return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "8px 0" }}>
+                <MediaImage path={question.question_image_path} alt="Imagen de la pregunta" />
+                <VisualAnnotationBox transcription={transcription} description={description} warnings={warnings} />
+            </div>
+        );
+    }
+
+    if (transcription || description || warnings) {
+        return <VisualAnnotationBox transcription={transcription} description={description} warnings={warnings} />;
     }
 
     return null;

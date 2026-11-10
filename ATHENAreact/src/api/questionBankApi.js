@@ -13,5 +13,20 @@ const questionBankApi = axios.create({
     },
 });
 
+// Interceptor para inyectar token JWT del estudiante autenticado en cada petición
+questionBankApi.interceptors.request.use((config) => {
+    try {
+        const token = localStorage.getItem('athena_token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+    } catch {
+        // En caso de SSR o acceso restringido a localStorage
+    }
+    return config;
+}, (error) => {
+    return Promise.reject(error);
+});
+
 export default questionBankApi;
 
