@@ -6,9 +6,9 @@ export const useExamStore = create((set) => ({
 
     // Cambiar el indice posicion de la pregunta actual
     setCurrentIndex: (index) =>
-        set({
-            currentIndex: index,
-        }),
+        set((state) => ({
+            currentIndex: typeof index === "function" ? index(state.currentIndex) : index,
+        })),
 
     //Guardar o actualiza la respuesta de una pregunta
     setAnswer: (questionId, optionId) =>
