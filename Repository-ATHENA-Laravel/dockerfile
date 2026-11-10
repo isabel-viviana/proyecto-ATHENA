@@ -1,34 +1,28 @@
-FROM php:8.3-cli-alpine
+FROM php:8.3-cli-bookworm
 
 WORKDIR /var/www
 
-RUN apk add --no-cache \
-        bash \
-        curl \
-        freetype-dev \
-        libjpeg-turbo-dev \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        $PHPIZE_DEPS \
+        libfreetype6-dev \
+        libjpeg62-turbo-dev \
+        libonig-dev \
         libpng-dev \
+        libpq-dev \
+        libssl-dev \
         libxml2-dev \
-        oniguruma-dev \
-        openssl-dev \
         unzip \
         zip \
-        autoconf \
-        g++ \
-        make \
-        pkgconf \
-        linux-headers \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd \
-    && pecl install mongodb \
+    && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd \
+    && pecl install mongodb-1.21.5 \
     && docker-php-ext-enable mongodb \
-    && apk del autoconf g++ make pkgconf linux-headers \
-    && rm -rf /tmp/pear
+    && rm -rf /tmp/pear /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-ENV APP_ENV=local \
-    APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+ENV APP_ENV=local
 
 COPY composer.json composer.lock ./
 RUN composer install --no-scripts --no-autoloader --prefer-dist --no-interaction

@@ -3,13 +3,19 @@ services:
     build:
       context: ./ATHENAreact
       dockerfile: dockerfile
+      args:
+        VITE_API_URL: /api
+        VITE_QUESTION_BANK_API_URL: /question-bank/api/v1
     container_name: athena-frontend
     ports:
       - "8080:80"
     networks:
       - athena-network
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+      question-bank:
+        condition: service_started
 
   backend:
     build:
@@ -22,40 +28,79 @@ services:
     environment:
       APP_NAME: ATHENA
       APP_ENV: local
-      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       APP_DEBUG: "true"
       APP_URL: http://localhost:8000
       LOG_CHANNEL: stderr
-      DB_CONNECTION: mysql
+      DB_CONNECTION: pgsql
       DB_HOST: db
-      DB_PORT: 3306
+      DB_PORT: 5432
       DB_DATABASE: Athena
-      DB_USERNAME: root
-      DB_PASSWORD: secret
+      DB_USERNAME: sail
+      DB_PASSWORD: password
       SESSION_DRIVER: database
       CACHE_STORE: database
       QUEUE_CONNECTION: database
       MONGODB_URI: mongodb://127.0.0.1:27017
       MONGODB_DATABASE: athena_ai
+    volumes:
+      - athena-app-key:/var/run/secrets/app-key
     networks:
       - athena-network
     depends_on:
       db:
         condition: service_healthy
 
+  question-bank:
+    build:
+      context: ./athena-question-bank
+      dockerfile: dockerfile
+    container_name: athena-question-bank
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      APP_NAME: ATHENA-Question-Bank
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8001
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/database/database.sqlite
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+      QUEUE_CONNECTION: sync
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      QB_DB_HOST: ${QB_DB_HOST:-}
+      QB_DB_PORT: ${QB_DB_PORT:-5432}
+      QB_DB_DATABASE: ${QB_DB_DATABASE:-postgres}
+      QB_DB_USERNAME: ${QB_DB_USERNAME:-}
+      QB_DB_PASSWORD: ${QB_DB_PASSWORD:-}
+      QB_DB_SSLMODE: ${QB_DB_SSLMODE:-require}
+      QB_DB_SCHEMA: ${QB_DB_SCHEMA:-public}
+      QB_STORAGE_ENDPOINT: ${QB_STORAGE_ENDPOINT:-}
+      QB_STORAGE_REGION: ${QB_STORAGE_REGION:-us-east-1}
+      QB_STORAGE_ACCESS_KEY: ${QB_STORAGE_ACCESS_KEY:-}
+      QB_STORAGE_SECRET_KEY: ${QB_STORAGE_SECRET_KEY:-}
+      QB_STORAGE_DOCUMENTS_BUCKET: ${QB_STORAGE_DOCUMENTS_BUCKET:-icfes-documents}
+      QB_STORAGE_MEDIA_BUCKET: ${QB_STORAGE_MEDIA_BUCKET:-icfes-media}
+    volumes:
+      - athena-qb-app-key:/var/run/secrets/app-key
+    networks:
+      - athena-network
+
   db:
-    image: mysql:8.0
+    image: postgres:16-alpine
     container_name: athena-db
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: Athena
-      MYSQL_ROOT_PASSWORD: secret
-    ports:
-      - "3306:3306"
+      POSTGRES_DB: Athena
+      POSTGRES_USER: sail
+      POSTGRES_PASSWORD: password
     volumes:
-      - athena-db-data:/var/lib/mysql
+      - athena-pg-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-psecret"]
+      test: ["CMD-SHELL", "pg_isready -U sail -d Athena"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -68,5 +113,9 @@ networks:
     driver: bridge
 
 volumes:
-  athena-db-data:
+  athena-pg-data:
+    driver: local
+  athena-app-key:
+    driver: local
+  athena-qb-app-key:
     driver: local
