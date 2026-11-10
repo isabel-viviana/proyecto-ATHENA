@@ -1,0 +1,44 @@
+FROM php:8.3-cli-alpine
+
+WORKDIR /var/www
+
+RUN apk add --no-cache \
+        bash \
+        curl \
+        freetype-dev \
+        libjpeg-turbo-dev \
+        libpng-dev \
+        libxml2-dev \
+        oniguruma-dev \
+        openssl-dev \
+        unzip \
+        zip \
+        autoconf \
+        g++ \
+        make \
+        pkgconf \
+        linux-headers \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd \
+    && pecl install mongodb \
+    && docker-php-ext-enable mongodb \
+    && apk del autoconf g++ make pkgconf linux-headers \
+    && rm -rf /tmp/pear
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+ENV APP_ENV=local \
+    APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+COPY composer.json composer.lock ./
+RUN composer install --no-scripts --no-autoloader --prefer-dist --no-interaction
+
+COPY . .
+RUN composer dump-autoload --optimize --no-scripts --no-interaction \
+    && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && chmod -R 777 storage bootstrap/cache \
+    && sed -i 's/\r$//' docker/entrypoint.sh \
+    && chmod +x docker/entrypoint.sh
+
+EXPOSE 8000
+ENTRYPOINT ["sh", "docker/entrypoint.sh"]

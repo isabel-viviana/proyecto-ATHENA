@@ -1,0 +1,72 @@
+services:
+  frontend:
+    build:
+      context: ./ATHENAreact
+      dockerfile: dockerfile
+    container_name: athena-frontend
+    ports:
+      - "8080:80"
+    networks:
+      - athena-network
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./Repository-ATHENA-Laravel
+      dockerfile: dockerfile
+    container_name: athena-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: ATHENA
+      APP_ENV: local
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: Athena
+      DB_USERNAME: root
+      DB_PASSWORD: secret
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      MONGODB_URI: mongodb://127.0.0.1:27017
+      MONGODB_DATABASE: athena_ai
+    networks:
+      - athena-network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.0
+    container_name: athena-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: Athena
+      MYSQL_ROOT_PASSWORD: secret
+    ports:
+      - "3306:3306"
+    volumes:
+      - athena-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-psecret"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 25s
+    networks:
+      - athena-network
+
+networks:
+  athena-network:
+    driver: bridge
+
+volumes:
+  athena-db-data:
+    driver: local
