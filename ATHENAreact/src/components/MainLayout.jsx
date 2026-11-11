@@ -16,7 +16,6 @@ const MainLayout = () => {
     /* importante: key={location.pathname} fuerza el re-montaje de cada ruta
     asi la animacion de framer-motion no se “estanca” cuando cambias de pagina */
 
-
     return (
         <div
             className="layout"

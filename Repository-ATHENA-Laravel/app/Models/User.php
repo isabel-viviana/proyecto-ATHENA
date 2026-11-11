@@ -33,6 +33,7 @@ class User extends Authenticatable
         'phone',
         'password',
         'role',
+        'firebase_uid',
         'avatar_url',
         'grade',
         'target_icfes_score',

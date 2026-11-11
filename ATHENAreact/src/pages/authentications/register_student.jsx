@@ -3,7 +3,7 @@ import ZorritoLogo from "../../assets/images/Zorrito6.png";
 import Zorrito2D from "../../assets/images/Zorrito2D.png";
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { useAuthStore } from "../../stores/useAuthStore";
+import { useAuthStore, getRedirectPathByRole } from "../../stores/useAuthStore";
 
 const RegisterStudent = () => {
     const [fullName, setFullName] = useState("");
@@ -28,13 +28,14 @@ const RegisterStudent = () => {
         }
 
         try {
-            await register({
+            const data = await register({
                 full_name: fullName.trim(),
                 email: email.trim(),
                 password,
                 password_confirmation: passwordConfirmation,
             });
-            navigate("/dashboard");
+            const userRole = data?.user?.role || "user";
+            navigate(getRedirectPathByRole(userRole));
         } catch {
             // El mensaje visible lo gestiona el store.
         }

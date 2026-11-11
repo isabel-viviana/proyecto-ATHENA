@@ -1,8 +1,11 @@
 <?php
 
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -12,8 +15,27 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'firebase.auth' => \App\Http\Middleware\FirebaseAuth::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                $token = $request->bearerToken();
+                Log::warning('Acceso 401 Unauthorized en ruta API protegida', [
+                    'path' => $request->path(),
+                    'method' => $request->method(),
+                    'origin' => $request->header('Origin'),
+                    'ip' => $request->ip(),
+                    'has_bearer' => !empty($token),
+                    'token_prefix' => $token ? substr($token, 0, 8) . '...' : null,
+                ]);
+
+                return response()->json([
+                    'message' => 'No autenticado. El token Sanctum es inválido, ha expirado o no fue suministrado.',
+                ], 401);
+            }
+        });
     })->create();

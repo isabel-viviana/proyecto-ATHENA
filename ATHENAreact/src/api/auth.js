@@ -1,5 +1,8 @@
 import api from "./axios";
 
-export const login = (credentials) => api.post("/auth/login", credentials);
+export const firebaseLogin = (firebaseToken, extraData = {}) =>
+    api.post("/auth/firebase-login", { firebase_token: firebaseToken, ...extraData });
+
 export const getCurrentUser = () => api.get("/auth/me");
+
 export const logout = () => api.post("/auth/logout");
