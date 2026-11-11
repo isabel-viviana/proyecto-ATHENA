@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProcessIqpeDocumentJob;
 use App\Models\IqpeDocumentJob;
 use App\Models\IqpeExecutionLog;
+use App\Models\IqpeQualityAudit;
 use App\Models\IqpeQuestionResolution;
 use App\Models\IqpeVerification;
 use App\Models\Question;
 use App\Models\SourceDocument;
 use App\Services\GeminiQuestionExtractionService;
+use App\Services\IqpeQualityAuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -171,6 +173,11 @@ class ExtractionController extends Controller
         $totalVerifications = (int) $verificationCounts->sum();
         $requiresReviewCount = max(0, $totalVerifications - $verifiedCandidateCount - $verifiedNoKeyCount);
 
+        $auditRecords = IqpeQualityAudit::where('job_id', $latestJob->id)->get(['passed_quality_check', 'duplicate_risk_flag']);
+        $totalAudited = $auditRecords->count();
+        $passedQualityCount = $auditRecords->where('passed_quality_check', true)->count();
+        $duplicateRiskCount = $auditRecords->where('duplicate_risk_flag', true)->count();
+
         // Derivar progreso real a partir del estado y etapa cronológica
         $progress = match ($latestJob->status) {
             'queued' => 'En cola de espera para asignación de worker.',
@@ -185,8 +192,8 @@ class ExtractionController extends Controller
             'verifying'       => "Verificando concordancia R1/R2 y claves oficiales ({$totalVerifications}/{$totalTarget})...",
             'solving_round_3' => "Ejecutando Solver R3 independiente para preguntas sin clave oficial ({$r3Done} resueltas)...",
             'arbitrating'     => 'Ejecutando arbitraje y desempate pedagógico Ronda 3...',
-            'auditing'        => 'Realizando auditoría de integridad y detección de reactivos duplicados...',
-            'completed'       => "Procesamiento completado: {$verifiedCandidateCount} candidatas con clave, {$verifiedNoKeyCount} candidatas sin clave (R1=R2=R3), {$requiresReviewCount} para revisión administrativa.",
+            'auditing'        => "Realizando auditoría de calidad y detección de duplicados ({$totalAudited}/{$totalTarget})...",
+            'completed'       => "Procesamiento completado: {$verifiedCandidateCount} candidatas con clave, {$verifiedNoKeyCount} sin clave (R1=R2=R3), {$requiresReviewCount} en revisión. Calidad: {$passedQualityCount}/{$totalAudited} aprobables, {$duplicateRiskCount} duplicados potenciales.",
             'failed'          => 'Procesamiento fallido: ' . ($latestJob->error_log ?: 'Error no especificado.'),
             default           => ucfirst($latestJob->status),
         };
@@ -214,6 +221,12 @@ class ExtractionController extends Controller
                     'verified_candidate_count'             => $verifiedCandidateCount,
                     'verified_candidate_no_official_count' => $verifiedNoKeyCount,
                     'requires_admin_review_count'          => $requiresReviewCount,
+                ],
+                'quality_audit_summary'    => [
+                    'total_audited'          => $totalAudited,
+                    'passed_quality_count'   => $passedQualityCount,
+                    'requires_review_count'  => max(0, $totalAudited - $passedQualityCount),
+                    'duplicate_risk_count'   => $duplicateRiskCount,
                 ],
                 'started_at'               => $latestJob->started_at?->toIso8601String(),
                 'completed_at'             => $latestJob->completed_at?->toIso8601String(),
@@ -432,11 +445,11 @@ class ExtractionController extends Controller
     }
 
     /**
-     * Ejecuta o consulta la auditoría automática de calidad de un documento.
+     * Ejecuta o consulta la auditoría automática de calidad y detección de duplicados de un documento.
      *
      * GET/POST /api/v1/admin/documents/{id}/audit
      */
-    public function audit(string $id): JsonResponse
+    public function audit(Request $request, string $id, IqpeQualityAuditService $qualityAuditService): JsonResponse
     {
         $document = SourceDocument::find($id);
 
@@ -447,7 +460,14 @@ class ExtractionController extends Controller
             ], 404);
         }
 
-        $questions = Question::with('options')
+        $questions = Question::with([
+            'options',
+            'stimulus.confirmedMediaAssets',
+            'stimulus.mediaAssets',
+            'confirmedMediaAssets',
+            'mediaAssets',
+            'subject',
+        ])
             ->where('source_document_id', $id)
             ->orderBy('order_in_group', 'asc')
             ->get();
@@ -459,20 +479,37 @@ class ExtractionController extends Controller
             ], 422);
         }
 
+        $latestJob = IqpeDocumentJob::where('source_document_id', $id)
+            ->orderBy('run_number', 'desc')
+            ->first();
+
+        if ($request->isMethod('post') && $latestJob && ! $latestJob->isRunning()) {
+            $qualityAuditService->auditJobQuestions($latestJob, $questions);
+        }
+
+        $qualityAudits = $latestJob
+            ? IqpeQualityAudit::where('job_id', $latestJob->id)->get()
+            : collect();
+
         $verified = $questions->where('key_status', 'verified')->count();
         $unverified = $questions->where('key_status', 'unverified')->count();
         $withWarnings = $questions->filter(fn($q) => !empty($q->extraction_warnings))->count();
+        $failedQualityCount = $qualityAudits->where('passed_quality_check', false)->count();
+        $duplicateRiskCount = $qualityAudits->where('duplicate_risk_flag', true)->count();
 
         return response()->json([
             'success' => true,
             'data'    => [
-                'document_id'       => $document->id,
-                'title'             => $document->title,
-                'total_questions'   => $questions->count(),
-                'verified_keys'     => $verified,
-                'unverified_keys'   => $unverified,
-                'with_warnings'     => $withWarnings,
-                'audit_status'      => $withWarnings === 0 ? 'optimal' : 'requires_review',
+                'document_id'          => $document->id,
+                'title'                => $document->title,
+                'job_id'               => $latestJob?->id,
+                'total_questions'      => $questions->count(),
+                'verified_keys'        => $verified,
+                'unverified_keys'      => $unverified,
+                'with_warnings'        => $withWarnings,
+                'duplicate_risk_count' => $duplicateRiskCount,
+                'audit_status'         => ($withWarnings === 0 && $failedQualityCount === 0 && $duplicateRiskCount === 0) ? 'optimal' : 'requires_review',
+                'iqpe_quality_audits'  => $qualityAudits,
             ],
         ]);
     }

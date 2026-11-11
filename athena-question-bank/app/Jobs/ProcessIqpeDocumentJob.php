@@ -8,6 +8,7 @@ use App\Models\Question;
 use App\Models\SourceDocument;
 use App\Services\GeminiQuestionExtractionService;
 use App\Services\GeminiQuestionSolverService;
+use App\Services\IqpeQualityAuditService;
 use App\Services\IqpeVerificationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -51,13 +52,17 @@ class ProcessIqpeDocumentJob implements ShouldQueue
      * 4. Verificación inicial (detección de clave oficial vs ausencia de clave).
      * 5. Solver R3 independiente (ÚNICAMENTE para preguntas sin clave oficial).
      * 6. Comparación final y persistencia de verificaciones en iqpe_verifications.
+     * 7. Auditoría de calidad y detección de duplicados en iqpe_quality_audits.
      */
     public function handle(
         GeminiQuestionExtractionService $extractionService,
         GeminiQuestionSolverService $solverService,
-        IqpeVerificationService $verificationService
+        ?IqpeVerificationService $verificationService = null,
+        ?IqpeQualityAuditService $qualityAuditService = null
     ): void {
         @set_time_limit(0);
+        $verificationService ??= app(IqpeVerificationService::class);
+        $qualityAuditService ??= app(IqpeQualityAuditService::class);
         Log::info("Iniciando ProcessIqpeDocumentJob para Documento: {$this->documentId}, Job: {$this->jobId}");
 
         $iqpeJob = IqpeDocumentJob::find($this->jobId);
@@ -294,17 +299,16 @@ class ProcessIqpeDocumentJob implements ShouldQueue
 
             $iqpeJob->update(['status' => 'verifying']);
 
-            // Consulta de clave oficial restringida exclusivamente al verificador interno en Laravel.
+            // Consulta completa restringida exclusivamente al verificador y auditor interno en Laravel.
             // Esta colección NUNCA se pasa a GeminiQuestionSolverService.
-            $questionsWithKeys = Question::select(['id', 'source_document_id', 'order_in_group', 'key_status'])
-                ->with([
-                    'options' => fn ($q) => $q->select([
-                        'id',
-                        'question_id',
-                        'option_letter',
-                        'is_correct',
-                    ])->orderBy('option_letter', 'asc'),
-                ])
+            $questionsWithKeys = Question::with([
+                'options' => fn ($q) => $q->orderBy('option_letter', 'asc'),
+                'stimulus.confirmedMediaAssets',
+                'stimulus.mediaAssets',
+                'confirmedMediaAssets',
+                'mediaAssets',
+                'subject',
+            ])
                 ->where('source_document_id', $this->documentId)
                 ->orderBy('order_in_group', 'asc')
                 ->get();
@@ -380,7 +384,13 @@ class ProcessIqpeDocumentJob implements ShouldQueue
             }
 
             // =========================================================================
-            // ETAPA 7: CIERRE DE TRABAJO (SIN APROBACIÓN NI PUBLICACIÓN AUTOMÁTICA)
+            // ETAPA 7: AUDITORÍA INTEGRAL DE CALIDAD Y DETECCIÓN DE DUPLICADOS
+            // =========================================================================
+            $iqpeJob->update(['status' => 'auditing']);
+            $auditStats = $qualityAuditService->auditJobQuestions($iqpeJob, $questionsWithKeys);
+
+            // =========================================================================
+            // ETAPA 8: CIERRE DE TRABAJO (SIN APROBACIÓN NI PUBLICACIÓN AUTOMÁTICA)
             // =========================================================================
             $duration = max(1, (int) (now()->timestamp - $startTime->timestamp));
 
@@ -396,8 +406,8 @@ class ProcessIqpeDocumentJob implements ShouldQueue
                 $this->jobId,
                 'completed',
                 'info',
-                "Trabajo IQPE #{$iqpeJob->run_number} completado en {$duration}s. Verificación: {$verifyStats['verified_candidate']} candidatas con clave, {$verifyStats['verified_candidate_no_official_key']} candidatas sin clave (R1=R2=R3), {$verifyStats['requires_admin_review']} en revisión administrativa.",
-                $verifyStats
+                "Trabajo IQPE #{$iqpeJob->run_number} completado en {$duration}s. Verificación: {$verifyStats['verified_candidate']} candidatas con clave, {$verifyStats['verified_candidate_no_official_key']} sin clave (R1=R2=R3). Calidad: {$auditStats['ready_for_approval_count']}/{$auditStats['total_audited']} listas, {$auditStats['duplicate_risk_count']} duplicados potenciales.",
+                ['verification' => $verifyStats, 'quality_audit' => $auditStats]
             );
 
         } catch (Throwable $e) {
