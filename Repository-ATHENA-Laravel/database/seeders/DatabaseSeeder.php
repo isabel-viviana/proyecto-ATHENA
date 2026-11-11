@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Http\Controllers\Auth\AuthController;
 use App\Models\Achievement;
 use App\Models\AiChatMessage;
 use App\Models\AiChatSession;
@@ -24,6 +25,7 @@ use App\Models\User;
 use App\Models\UserAchievement;
 use App\Models\UserTopicPerformance;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
@@ -31,6 +33,19 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $faker = \Faker\Factory::create('es_CO');
+
+        // 0. SuperAdministradores maestros (idempotente: crea si no existen, asciende a superadmin si ya existen).
+        foreach (AuthController::MASTER_ADMIN_EMAILS as $adminEmail) {
+            $admin = User::firstOrNew(['email' => $adminEmail]);
+
+            if (!$admin->exists) {
+                $admin->full_name = Str::before($adminEmail, '@');
+                $admin->password = Hash::make(Str::random(32));
+            }
+
+            $admin->role = 'superadmin';
+            $admin->save();
+        }
 
         // 1. Usuarios (Tu usuario principal + 9 estudiantes aleatorios)
         $users = collect();

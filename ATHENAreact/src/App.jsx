@@ -85,6 +85,8 @@ function App() {
 
                 {/* Rutas del Módulo Administrativo (AdminLayout) */}
                 <Route element={<AdminRoute><AdminLayout /></AdminRoute>}>
+                    <Route path="/dashboard/superadmin" element={<DashboardSuper />} />
+                    <Route path="/dashboard/admin" element={<DashboardAdmin />} />
                     <Route path="/super/dashboard" element={<DashboardSuper />} />
                     <Route path="/admin/dashboard" element={<DashboardAdmin />} />
                     <Route path="/support/dashboard" element={<DashboardSupport />} />

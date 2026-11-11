@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "../stores/useAuthStore";
 
-const ADMIN_ROLES = ["admin", "super_admin", "support"];
+const ADMIN_ROLES = ["superadmin", "super_admin", "admin", "support"];
 
 /**
  * Protege rutas del panel administrativo.

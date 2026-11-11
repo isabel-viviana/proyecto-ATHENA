@@ -12,18 +12,23 @@ const AdminLayout = () => {
     const logout = useAuthStore((state) => state.logout);
 
     // Identificar el rol actual según la ruta
-    const isSuper = location.pathname.startsWith("/super");
-    const isAdmin = location.pathname.startsWith("/admin");
+    const isSuper =
+        location.pathname.startsWith("/super") ||
+        location.pathname.startsWith("/dashboard/superadmin");
+    const isAdmin =
+        (location.pathname.startsWith("/admin") ||
+            location.pathname.startsWith("/dashboard/admin")) &&
+        !isSuper;
     const isSupport = location.pathname.startsWith("/support");
 
     let currentRoleTitle = "Super Administrador";
     let roleBadge = "SUPER ADMIN";
-    let activeDashboardPath = "/super/dashboard";
+    let activeDashboardPath = "/dashboard/superadmin";
 
     if (isAdmin) {
         currentRoleTitle = "Administrador Académico";
         roleBadge = "ADMIN";
-        activeDashboardPath = "/admin/dashboard";
+        activeDashboardPath = "/dashboard/admin";
     } else if (isSupport) {
         currentRoleTitle = "Soporte Técnico";
         roleBadge = "SUPPORT";
@@ -83,14 +88,14 @@ const AdminLayout = () => {
                     <div className="admin-sidebar__roles-title">Vistas de Dashboard</div>
                     <div className="admin-sidebar__roles-pills">
                         <Link
-                            to="/super/dashboard"
+                            to="/dashboard/superadmin"
                             className={`admin-sidebar__role-pill ${isSuper ? "admin-sidebar__role-pill--active" : ""}`}
                             onClick={() => setSidebarOpen(false)}
                         >
                             Super
                         </Link>
                         <Link
-                            to="/admin/dashboard"
+                            to="/dashboard/admin"
                             className={`admin-sidebar__role-pill ${isAdmin ? "admin-sidebar__role-pill--active" : ""}`}
                             onClick={() => setSidebarOpen(false)}
                         >

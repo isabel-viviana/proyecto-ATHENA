@@ -13,6 +13,7 @@ const RegisterStudent = () => {
     const error = useAuthStore((state) => state.error);
     const isSubmitting = useAuthStore((state) => state.loading);
     const register = useAuthStore((state) => state.register);
+    const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
     const clearError = useAuthStore((state) => state.clearError);
     const setError = useAuthStore((state) => state.setError);
 
@@ -34,7 +35,18 @@ const RegisterStudent = () => {
                 password,
                 password_confirmation: passwordConfirmation,
             });
-            const userRole = data?.user?.role || "user";
+            const userRole = data?.user?.role || "student";
+            navigate(getRedirectPathByRole(userRole));
+        } catch {
+            // El mensaje visible lo gestiona el store.
+        }
+    };
+
+    const handleGoogleLogin = async () => {
+        clearError();
+        try {
+            const data = await loginWithGoogle();
+            const userRole = data?.user?.role || "student";
             navigate(getRedirectPathByRole(userRole));
         } catch {
             // El mensaje visible lo gestiona el store.
@@ -126,7 +138,12 @@ const RegisterStudent = () => {
                     </div>
 
                     <div className="social-buttons">
-                        <button className="btn-social" type="button">
+                        <button
+                            className="btn-social"
+                            type="button"
+                            onClick={handleGoogleLogin}
+                            disabled={isSubmitting}
+                        >
                             <i className="fab fa-google"></i> Continuar con
                             Google
                         </button>

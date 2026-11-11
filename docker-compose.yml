@@ -42,6 +42,7 @@ services:
       QUEUE_CONNECTION: database
       MONGODB_URI: mongodb://127.0.0.1:27017
       MONGODB_DATABASE: athena_ai
+      FIREBASE_PROJECT_ID: athena-595d2
     volumes:
       - athena-app-key:/var/run/secrets/app-key
     networks:

@@ -14,6 +14,45 @@ use Throwable;
 
 class AuthController extends Controller
 {
+    /**
+     * Correos maestros que obtienen automáticamente el rol de superadmin
+     * única y exclusivamente al autenticarse con Firebase.
+     */
+    public const MASTER_ADMIN_EMAILS = [
+        'thewindislikelife@gmail.com',
+        'isabelparedes3012@gmail.com',
+        'athenapreicfes@gmail.com',
+    ];
+
+    private const SUPERADMIN_ROLE = 'superadmin';
+    private const STUDENT_ROLE = 'student';
+
+    public static function isMasterAdminEmail(?string $email): bool
+    {
+        if ($email === null) {
+            return false;
+        }
+
+        return in_array(strtolower(trim($email)), self::MASTER_ADMIN_EMAILS, true);
+    }
+
+    /**
+     * Asciende a superadmin al usuario si su correo está en la lista maestra.
+     * Uso exclusivo dentro de firebaseLogin() (proveedores verificados).
+     */
+    private function ensureMasterAdminRole(User $user): void
+    {
+        if (self::isMasterAdminEmail($user->email) && $user->role !== self::SUPERADMIN_ROLE) {
+            $previousRole = $user->role;
+            $user->forceFill(['role' => self::SUPERADMIN_ROLE])->save();
+
+            Log::info('Usuario maestro ascendido automáticamente a superadmin vía Firebase', [
+                'user_id' => $user->id,
+                'previous_role' => $previousRole,
+            ]);
+        }
+    }
+
     public function login(Request $request): JsonResponse
     {
         $credentials = $request->validate([
@@ -74,6 +113,7 @@ class AuthController extends Controller
             'full_name' => $data['full_name'],
             'email' => $data['email'],
             'password' => $data['password'],
+            'role' => self::STUDENT_ROLE,
         ]);
 
         try {
@@ -165,7 +205,7 @@ class AuthController extends Controller
                     'email' => $email,
                     'full_name' => $request->input('full_name', $payload['name'] ?? 'Usuario'),
                     'password' => Hash::make(Str::random(32)),
-                    'role' => 'user',
+                    'role' => self::isMasterAdminEmail($email) ? self::SUPERADMIN_ROLE : self::STUDENT_ROLE,
                 ]);
                 $isNewUser = true;
 
@@ -176,6 +216,8 @@ class AuthController extends Controller
             }
         }
 
+        // Ascenso automático de correos maestros (cubre usuarios ya existentes)
+        $this->ensureMasterAdminRole($user);
         $user->forceFill(['last_login_at' => now()])->save();
 
         // Limpiar tokens obsoletos (> 1 minuto de antigüedad) para evitar condiciones de carrera

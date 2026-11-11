@@ -1,0 +1,35 @@
+[1mdiff --git a/ATHENAreact/nginx.conf b/ATHENAreact/nginx.conf[m
+[1mindex 94a5439..704dd25 100644[m
+[1m--- a/ATHENAreact/nginx.conf[m
+[1m+++ b/ATHENAreact/nginx.conf[m
+[36m@@ -5,7 +5,7 @@[m [mserver {[m
+     index index.html;[m
+ [m
+     location /api/ {[m
+[31m-        proxy_pass http://backend:8000;[m
+[32m+[m[32m        proxy_pass http://athena-backend:8000;[m
+         proxy_set_header Host $host;[m
+         proxy_set_header X-Real-IP $remote_addr;[m
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;[m
+[1mdiff --git a/Repository-ATHENA-Laravel/.env.example b/Repository-ATHENA-Laravel/.env.example[m
+[1mindex 98fd026..c796f2a 100644[m
+[1m--- a/Repository-ATHENA-Laravel/.env.example[m
+[1m+++ b/Repository-ATHENA-Laravel/.env.example[m
+[36m@@ -71,4 +71,4 @@[m [mGEMINI_API_KEY=[m
+ GEMINI_MODEL=gemini-3.1-flash-lite[m
+ [m
+ # Firebase Auth[m
+[31m-FIREBASE_PROJECT_ID=[m
+[32m+[m[32mFIREBASE_PROJECT_ID=athena-595d2[m
+[1mdiff --git a/docker-compose.yml b/docker-compose.yml[m
+[1mindex 6dc8f94..7ad3e6c 100644[m
+[1m--- a/docker-compose.yml[m
+[1m+++ b/docker-compose.yml[m
+[36m@@ -42,6 +42,7 @@[m [mservices:[m
+       QUEUE_CONNECTION: database[m
+       MONGODB_URI: mongodb://127.0.0.1:27017[m
+       MONGODB_DATABASE: athena_ai[m
+[32m+[m[32m      FIREBASE_PROJECT_ID: athena-595d2[m
+     volumes:[m
+       - athena-app-key:/var/run/secrets/app-key[m
+     networks:[m

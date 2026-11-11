@@ -19,7 +19,7 @@ const LoginAdmin = () => {
 
     // Redirección si ya está autenticado con rol administrativo
     useEffect(() => {
-        if (isAuthenticated && ["admin", "super_admin", "support"].includes(role)) {
+        if (isAuthenticated && ["superadmin", "super_admin", "admin", "support"].includes(role)) {
             navigate(getRedirectPathByRole(role), { replace: true });
         }
     }, [isAuthenticated, role, navigate]);
@@ -39,7 +39,7 @@ const LoginAdmin = () => {
             const data = await login({ email: email.trim(), password });
             const userRole = data?.user?.role;
 
-            if (!["admin", "super_admin", "support"].includes(userRole)) {
+            if (!["superadmin", "super_admin", "admin", "support"].includes(userRole)) {
                 setError("Esta cuenta no tiene privilegios administrativos.");
                 await logout();
                 setIsSubmitting(false);

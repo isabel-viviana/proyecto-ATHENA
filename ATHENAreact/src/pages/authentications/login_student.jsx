@@ -12,6 +12,7 @@ const LoginStudent = () => {
     const error = useAuthStore((state) => state.error);
     const isSubmitting = useAuthStore((state) => state.loading);
     const login = useAuthStore((state) => state.login);
+    const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
     const clearError = useAuthStore((state) => state.clearError);
     const setError = useAuthStore((state) => state.setError);
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -37,7 +38,18 @@ const LoginStudent = () => {
 
         try {
             const data = await login({ email: email.trim(), password });
-            const userRole = data?.user?.role || "user";
+            const userRole = data?.user?.role || "student";
+            navigate(getRedirectPathByRole(userRole));
+        } catch {
+            // El mensaje visible lo gestiona el store.
+        }
+    };
+
+    const handleGoogleLogin = async () => {
+        clearError();
+        try {
+            const data = await loginWithGoogle();
+            const userRole = data?.user?.role || "student";
             navigate(getRedirectPathByRole(userRole));
         } catch {
             // El mensaje visible lo gestiona el store.
@@ -108,7 +120,12 @@ const LoginStudent = () => {
                     </div>
 
                     <div className="social-buttons">
-                        <button className="btn-social" type="button">
+                        <button
+                            className="btn-social"
+                            type="button"
+                            onClick={handleGoogleLogin}
+                            disabled={isSubmitting}
+                        >
                             <i className="fab fa-google"></i> Continuar con
                             Google
                         </button>

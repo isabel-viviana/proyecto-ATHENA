@@ -2,6 +2,8 @@ import { create } from "zustand";
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
+    signInWithPopup,
+    GoogleAuthProvider,
     signOut,
     onAuthStateChanged,
 } from "firebase/auth";
@@ -24,6 +26,10 @@ const errorMessage = (error) => {
             "auth/weak-password": "La contraseña debe tener al menos 6 caracteres.",
             "auth/too-many-requests": "Demasiados intentos. Intenta más tarde.",
             "auth/network-request-failed": "Error de conexión. Verifica tu internet.",
+            "auth/popup-closed-by-user": "Se cerró la ventana de Google antes de completar el inicio de sesión.",
+            "auth/cancelled-popup-request": "Solicitud de ventana emergente cancelada.",
+            "auth/popup-blocked": "El navegador bloqueó la ventana emergente de Google. Permítela e intenta de nuevo.",
+            "auth/account-exists-with-different-credential": "Ya existe una cuenta con este correo usando otro método de acceso.",
         };
         return firebaseErrors[error.code] || error.message;
     }
@@ -59,12 +65,14 @@ let _isAuthenticating = false;
  */
 export const getRedirectPathByRole = (role) => {
     switch (role) {
+        case "superadmin":
         case "super_admin":
-            return "/super/dashboard";
+            return "/dashboard/superadmin";
         case "admin":
-            return "/admin/dashboard";
+            return "/dashboard/admin";
         case "support":
             return "/support/dashboard";
+        case "student":
         case "user":
         default:
             return "/dashboard";
@@ -118,7 +126,7 @@ export const useAuthStore = create((set, get) => ({
             set({
                 user,
                 token,
-                role: user.role || "user",
+                role: user.role || "student",
                 isAuthenticated: true,
                 isInitialized: true,
                 loading: false,
@@ -128,6 +136,65 @@ export const useAuthStore = create((set, get) => ({
             return response.data;
         } catch (error) {
             // Si Firebase autenticó pero Laravel rechazó, cerrar Firebase
+            if (firebaseAuth.currentUser) {
+                await signOut(firebaseAuth).catch(() => {});
+            }
+            setAuthToken(null);
+            set({
+                user: null,
+                token: null,
+                role: null,
+                loading: false,
+                isAuthenticated: false,
+                isInitialized: true,
+                error: errorMessage(error),
+            });
+            throw error;
+        } finally {
+            _isAuthenticating = false;
+        }
+    },
+
+    /**
+     * Inicia sesión con Google (Firebase Popup) e intercambia el ID Token por Sanctum en Laravel.
+     */
+    loginWithGoogle: async () => {
+        _isAuthenticating = true;
+        set({ loading: true, error: null });
+        try {
+            const provider = new GoogleAuthProvider();
+            const userCredential = await signInWithPopup(firebaseAuth, provider);
+
+            const idToken = await userCredential.user.getIdToken();
+
+            const payload = { firebase_token: idToken };
+            if (userCredential.user.displayName) {
+                payload.full_name = userCredential.user.displayName;
+            }
+
+            const response = await api.post("/auth/firebase-login", payload);
+
+            const user = response.data?.user;
+            const token = response.data?.token || response.data?.access_token;
+
+            if (!user || !token) {
+                throw new Error("El servidor no devolvió la sesión o token de usuario.");
+            }
+
+            setAuthToken(token);
+
+            set({
+                user,
+                token,
+                role: user.role || "student",
+                isAuthenticated: true,
+                isInitialized: true,
+                loading: false,
+                error: null,
+            });
+
+            return response.data;
+        } catch (error) {
             if (firebaseAuth.currentUser) {
                 await signOut(firebaseAuth).catch(() => {});
             }
@@ -183,7 +250,7 @@ export const useAuthStore = create((set, get) => ({
             set({
                 user,
                 token,
-                role: user.role || "user",
+                role: user.role || "student",
                 isAuthenticated: true,
                 isInitialized: true,
                 loading: false,
@@ -233,7 +300,7 @@ export const useAuthStore = create((set, get) => ({
             set({
                 user,
                 token,
-                role: user.role || "user",
+                role: user.role || "student",
                 isAuthenticated: true,
                 isInitialized: true,
             });
@@ -288,7 +355,7 @@ export const useAuthStore = create((set, get) => ({
                         set({
                             user,
                             token: currentToken,
-                            role: user.role || "user",
+                            role: user.role || "student",
                             isAuthenticated: true,
                             isInitialized: true,
                             loading: false,
@@ -315,7 +382,7 @@ export const useAuthStore = create((set, get) => ({
                     set({
                         user,
                         token,
-                        role: user.role || "user",
+                        role: user.role || "student",
                         isAuthenticated: true,
                         isInitialized: true,
                         loading: false,
