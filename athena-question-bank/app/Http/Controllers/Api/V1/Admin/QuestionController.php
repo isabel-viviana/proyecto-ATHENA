@@ -4,18 +4,19 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Question;
-use App\Models\QuestionOption;
-use App\Models\Stimulus;
-use App\Models\Topic;
+use App\Services\IqpeAdminWorkflowService;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class QuestionController extends Controller
 {
+    public function __construct(
+        protected IqpeAdminWorkflowService $workflowService
+    ) {}
     /**
      * Listado paginado de preguntas reales con filtros por estado, materia y búsqueda por enunciado.
      *
@@ -66,10 +67,11 @@ class QuestionController extends Controller
             }
         }
 
-        // 3. Búsqueda por texto en enunciado (case-insensitive con ILIKE en PostgreSQL)
+        // 3. Búsqueda por texto en enunciado (portable entre PostgreSQL ILIKE y SQLite LIKE)
         if ($request->filled('search')) {
             $search = trim($request->input('search'));
-            $query->where('statement', 'ILIKE', "%{$search}%");
+            $op = DB::connection('question_bank')->getDriverName() === 'pgsql' ? 'ILIKE' : 'LIKE';
+            $query->where('statement', $op, "%{$search}%");
         }
 
         // 3.1 Filtro opcional por documento fuente
@@ -122,6 +124,13 @@ class QuestionController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de pregunta no válido.',
+            ], 422);
+        }
+
         $question = Question::with(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic', 'sourceDocument'])
             ->find($id);
 
@@ -139,12 +148,20 @@ class QuestionController extends Controller
     }
 
     /**
-     * Actualiza el enunciado, opciones, materia, tema, clave y justificación de una pregunta.
+     * Actualiza el enunciado, opciones, materia, tema, clave y justificación de una pregunta
+     * conservando trazabilidad de modificaciones y evitando alteraciones silenciosas de claves.
      *
      * PUT /api/v1/admin/questions/{id}
      */
     public function update(Request $request, string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de pregunta no válido.',
+            ], 422);
+        }
+
         $question = Question::with(['options', 'stimulus'])->find($id);
 
         if (! $question) {
@@ -155,152 +172,35 @@ class QuestionController extends Controller
         }
 
         $validated = $request->validate([
-            'statement'      => ['nullable', 'string', 'min:5'],
-            'explanation'    => ['nullable', 'string'],
-            'subject_id'     => ['nullable', 'integer', 'in:1,2,3,4,5'],
-            'topic_id'       => ['nullable', 'integer'],
-            'difficulty'     => ['nullable', 'string', 'in:easy,medium,hard'],
-            'key_status'     => ['nullable', 'string', 'in:unverified,verified,disputed'],
-            'correct_option' => ['nullable', 'string', 'in:A,B,C,D'],
-            'options'        => ['nullable', 'array'],
+            'statement'               => ['nullable', 'string', 'min:5'],
+            'explanation'             => ['nullable', 'string'],
+            'subject_id'              => ['nullable', 'integer', 'in:1,2,3,4,5'],
+            'topic_id'                => ['nullable', 'integer'],
+            'difficulty'              => ['nullable', 'string', 'in:easy,medium,hard'],
+            'key_status'              => ['nullable', 'string', 'in:unverified,verified,disputed'],
+            'correct_option'          => ['nullable', 'string', 'in:A,B,C,D'],
+            'notes'                   => ['nullable', 'string', 'max:2000'],
+            'reason'                  => ['nullable', 'string', 'max:2000'],
+            'key_change_reason'       => ['nullable', 'string', 'max:2000'],
+            'manual_key_reason'       => ['nullable', 'string', 'max:2000'],
+            'confirm_official_key'    => ['nullable', 'boolean'],
+            'options'                 => ['nullable', 'array'],
             'options.*.option_letter' => ['required_with:options', 'string', 'in:A,B,C,D'],
             'options.*.option_text'   => ['required_with:options', 'string'],
             'options.*.is_correct'    => ['nullable', 'boolean'],
         ]);
 
-        // 1. Validar restricción foránea compuesta: si tiene estímulo, la materia debe coincidir con la del estímulo
-        $targetSubjectId = $validated['subject_id'] ?? $question->subject_id;
-        if ($question->stimulus_id && $targetSubjectId) {
-            $stimulus = $question->stimulus ?: Stimulus::find($question->stimulus_id);
-            if ($stimulus && (int) $stimulus->subject_id !== (int) $targetSubjectId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "La pregunta está vinculada a un estímulo de lectura cuya área es '{$stimulus->subject_id}'. No se puede cambiar el área sin modificar el estímulo asociado.",
-                ], 422);
-            }
-        }
-
-        // 2. Validar que si topic_id existe, coincida con subject_id en topics
-        if (!empty($validated['topic_id'])) {
-            $topicExists = Topic::where('id', $validated['topic_id'])
-                ->where('subject_id', $targetSubjectId)
-                ->exists();
-            if (! $topicExists) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "El tema seleccionado no pertenece al área académica asignada.",
-                ], 422);
-            }
-        }
-
-        // 3. Resolver estado de clave y respuesta correcta
-        $keyStatus = $validated['key_status'] ?? $question->key_status;
-        $correctLetter = $validated['correct_option'] ?? null;
-
-        if ($correctLetter) {
-            $correctLetter = strtoupper(trim($correctLetter));
-        }
-
-        // Si se marca explícitamente como verificada, debe especificarse una respuesta correcta
-        if ($keyStatus === 'verified' && empty($correctLetter)) {
-            // Verificar si alguna opción viene con is_correct = true
-            if (!empty($validated['options'])) {
-                foreach ($validated['options'] as $opt) {
-                    if (!empty($opt['is_correct'])) {
-                        $correctLetter = strtoupper(trim($opt['option_letter']));
-                        break;
-                    }
-                }
-            }
-            if (empty($correctLetter)) {
-                // Verificar las opciones ya existentes en base de datos
-                $existingCorrect = $question->options->firstWhere('is_correct', true);
-                if ($existingCorrect) {
-                    $correctLetter = $existingCorrect->option_letter;
-                }
-            }
-
-            if (empty($correctLetter)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Para marcar la clave como verificada, debe seleccionar una opción de respuesta correcta (A, B, C o D).',
-                ], 422);
-            }
-        }
-
         try {
-            DB::connection('question_bank')->transaction(function () use ($question, $validated, $keyStatus, $correctLetter, $targetSubjectId) {
-                // Actualizar campos principales de la pregunta
-                $updateData = [];
-
-                if (array_key_exists('statement', $validated) && $validated['statement'] !== null) {
-                    $updateData['statement'] = trim($validated['statement']);
-                }
-
-                if (array_key_exists('explanation', $validated)) {
-                    $updateData['explanation'] = $validated['explanation'];
-                }
-
-                if (array_key_exists('subject_id', $validated) && $validated['subject_id'] !== null) {
-                    $updateData['subject_id'] = (int) $targetSubjectId;
-                }
-
-                if (array_key_exists('topic_id', $validated)) {
-                    $updateData['topic_id'] = $validated['topic_id'] ? (int) $validated['topic_id'] : null;
-                }
-
-                if (!empty($validated['difficulty'])) {
-                    $updateData['difficulty'] = $validated['difficulty'];
-                }
-
-                $updateData['key_status'] = $keyStatus;
-
-                $question->update($updateData);
-
-                // Actualizar o crear opciones de respuesta
-                if (!empty($validated['options']) && is_array($validated['options'])) {
-                    foreach ($validated['options'] as $optData) {
-                        $letter = strtoupper(trim($optData['option_letter']));
-                        $isCorrect = ($keyStatus === 'verified' && $correctLetter === $letter);
-
-                        $option = QuestionOption::where('question_id', $question->id)
-                            ->where('option_letter', $letter)
-                            ->first();
-
-                        if ($option) {
-                            $option->update([
-                                'option_text' => trim($optData['option_text']),
-                                'is_correct'  => $isCorrect,
-                            ]);
-                        } else {
-                            QuestionOption::create([
-                                'id'            => (string) Str::uuid(),
-                                'question_id'   => $question->id,
-                                'option_letter' => $letter,
-                                'option_text'   => trim($optData['option_text']),
-                                'is_correct'    => $isCorrect,
-                            ]);
-                        }
-                    }
-                } elseif ($correctLetter) {
-                    // Si no se pasaron textos de opciones pero sí se actualizó la opción correcta
-                    foreach ($question->options as $option) {
-                        $isCorrect = ($keyStatus === 'verified' && $option->option_letter === $correctLetter);
-                        if ($option->is_correct !== $isCorrect) {
-                            $option->update(['is_correct' => $isCorrect]);
-                        }
-                    }
-                }
-            });
-
-            $freshQuestion = Question::with(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic'])->find($question->id);
+            $admin = $request->attributes->get('auth_admin', []);
+            $freshQuestion = $this->workflowService->editQuestion($question, $validated, $admin);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pregunta actualizada exitosamente.',
+                'message' => 'Pregunta actualizada exitosamente con registro de trazabilidad.',
                 'data'    => $freshQuestion,
             ]);
-
+        } catch (HttpResponseException $e) {
+            return $e->getResponse();
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -310,12 +210,25 @@ class QuestionController extends Controller
     }
 
     /**
-     * Aprueba pedagógicamente una pregunta para el banco tras verificar criterios.
+     * Aprueba administrativamente una pregunta tras validar ausencia de bloqueos críticos
+     * y registrar quién aprobó, cuándo y qué observaciones aplican (cambia a status='review', sin publicar).
      *
      * POST /api/v1/admin/questions/{id}/approve
      */
     public function approve(Request $request, string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de pregunta no válido.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'notes'                => ['nullable', 'string', 'max:2000'],
+            'acknowledge_warnings' => ['nullable', 'boolean'],
+        ]);
+
         $question = Question::with(['options', 'stimulus'])->find($id);
 
         if (! $question) {
@@ -325,86 +238,33 @@ class QuestionController extends Controller
             ], 404);
         }
 
-        // Criterio 1: Enunciado válido
-        if (empty(trim($question->statement)) || mb_strlen(trim($question->statement)) < 10) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se puede aprobar la pregunta: el enunciado no cumple con los criterios mínimos de contenido (mínimo 10 caracteres).',
-            ], 422);
-        }
-
-        // Criterio 2: Opciones completas (al menos 4 opciones y con texto)
-        $options = $question->options;
-        if ($options->count() < 4) {
-            return response()->json([
-                'success' => false,
-                'message' => "No se puede aprobar la pregunta: debe tener al menos 4 opciones de respuesta registradas (actualmente tiene {$options->count()}).",
-            ], 422);
-        }
-
-        foreach ($options as $opt) {
-            if (empty(trim($opt->option_text))) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "No se puede aprobar la pregunta: la opción {$opt->option_letter} no contiene texto.",
-                ], 422);
-            }
-        }
-
-        // Criterio 3: Clave verificada o no verificada (Regla 8: validación flexible)
-        if ($question->key_status === 'verified') {
-            $correctOptions = $options->where('is_correct', true);
-            if ($correctOptions->count() !== 1) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "No se puede aprobar la pregunta: al estar marcada como verificada, debe existir exactamente una opción correcta (actualmente hay {$correctOptions->count()}).",
-                ], 422);
-            }
-        }
-        // Si es 'unverified', se permite la aprobación pedagógica manteniendo 'unverified' sin inventar respuesta.
-
-        // Criterio 4: Materia válida
-        if (empty($question->subject_id) || $question->subject_id < 1 || $question->subject_id > 5) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se puede aprobar la pregunta: el área académica no es válida dentro del marco oficial ICFES.',
-            ], 422);
-        }
-
-        // Criterio 5: Si tiene estímulo, validar integridad
-        if ($question->stimulus_id && ! $question->stimulus) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se puede aprobar la pregunta: el estímulo referenciado no existe.',
-            ], 422);
-        }
-
-        // Aplicar aprobación: cambiar estado a 'review' (aprobada pedagógicamente para calibración, sin publicar directamente)
-        $question->update([
-            'status' => 'review',
-        ]);
+        $admin = $request->attributes->get('auth_admin', []);
+        $approved = $this->workflowService->approveQuestion($question, $admin, $validated);
 
         return response()->json([
             'success' => true,
-            'message' => '¡Pregunta revisada y aprobada pedagógicamente para el banco oficial!',
-            'data'    => $question->fresh(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic']),
+            'message' => '¡Pregunta aprobada administrativamente para revisión final/publicación!',
+            'data'    => $approved,
         ]);
     }
 
     /**
-     * Aprueba pedagógicamente múltiples preguntas seleccionadas.
-     * Soporta éxito parcial: si una pregunta falla validaciones, no revierte las demás.
+     * Aprueba administrativamente múltiples preguntas seleccionadas.
+     * Bloquea individualmente cualquier reactivo con problemas críticos sin impedir aprobar los sanos.
      *
      * POST /api/v1/admin/questions/bulk-approve
      */
     public function bulkApprove(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'question_ids'   => 'required|array|min:1',
-            'question_ids.*' => 'required|uuid',
+            'question_ids'         => 'required|array|min:1',
+            'question_ids.*'       => 'required|uuid',
+            'notes'                => 'nullable|string|max:2000',
+            'acknowledge_warnings' => 'nullable|boolean',
         ]);
 
         $ids = $validated['question_ids'];
+        $admin = $request->attributes->get('auth_admin', []);
         $approvedIds = [];
         $rejected = [];
 
@@ -420,84 +280,24 @@ class QuestionController extends Controller
                 continue;
             }
 
-            // Validación de enunciado
-            if (empty(trim($question->statement)) || mb_strlen(trim($question->statement)) < 10) {
-                $rejected[] = [
-                    'id'     => $id,
-                    'order'  => $question->order_in_group,
-                    'reason' => 'El enunciado debe tener al menos 10 caracteres.',
-                ];
-                continue;
-            }
-
-            // Validación de opciones
-            $options = $question->options;
-            if ($options->count() < 4) {
-                $rejected[] = [
-                    'id'     => $id,
-                    'order'  => $question->order_in_group,
-                    'reason' => "Requiere al menos 4 opciones de respuesta (tiene {$options->count()}).",
-                ];
-                continue;
-            }
-
-            $hasEmptyOption = false;
-            foreach ($options as $opt) {
-                if (empty(trim($opt->option_text))) {
-                    $rejected[] = [
-                        'id'     => $id,
-                        'order'  => $question->order_in_group,
-                        'reason' => "La opción {$opt->option_letter} no contiene texto.",
-                    ];
-                    $hasEmptyOption = true;
-                    break;
-                }
-            }
-            if ($hasEmptyOption) {
-                continue;
-            }
-
-            // Validación de materia
-            if (empty($question->subject_id) || $question->subject_id < 1 || $question->subject_id > 5) {
-                $rejected[] = [
-                    'id'     => $id,
-                    'order'  => $question->order_in_group,
-                    'reason' => 'El área académica asignada no es válida.',
-                ];
-                continue;
-            }
-
-            // Validación de clave (flexible)
-            if ($question->key_status === 'verified') {
-                $correctCount = $options->where('is_correct', true)->count();
-                if ($correctCount !== 1) {
-                    $rejected[] = [
-                        'id'     => $id,
-                        'order'  => $question->order_in_group,
-                        'reason' => "Marcada como verificada pero tiene {$correctCount} opciones correctas (debe ser 1).",
-                    ];
-                    continue;
-                }
-            }
-
-            // Si tiene estímulo, verificar que el estímulo exista
-            if ($question->stimulus_id && ! $question->stimulus) {
-                $rejected[] = [
-                    'id'     => $id,
-                    'order'  => $question->order_in_group,
-                    'reason' => 'El estímulo referenciado no existe en el sistema.',
-                ];
-                continue;
-            }
-
             try {
-                $question->update(['status' => 'review']);
+                $this->workflowService->approveQuestion($question, $admin, [
+                    'notes'                => $validated['notes'] ?? null,
+                    'acknowledge_warnings' => $validated['acknowledge_warnings'] ?? false,
+                ]);
                 $approvedIds[] = $question->id;
+            } catch (HttpResponseException $e) {
+                $body = json_decode((string) $e->getResponse()->getContent(), true);
+                $rejected[] = [
+                    'id'     => $id,
+                    'order'  => $question->order_in_group,
+                    'reason' => $body['message'] ?? 'No cumple criterios administrativos de aprobación.',
+                ];
             } catch (Throwable $e) {
                 $rejected[] = [
                     'id'     => $id,
                     'order'  => $question->order_in_group,
-                    'reason' => 'Error al guardar estado: ' . $e->getMessage(),
+                    'reason' => 'Error al aprobar: ' . $e->getMessage(),
                 ];
             }
         }
@@ -508,7 +308,7 @@ class QuestionController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Aprobación masiva procesada: {$totalApproved} aprobadas, {$totalRejected} rechazadas de {$totalReceived} seleccionadas.",
+            'message' => "Aprobación masiva procesada: {$totalApproved} aprobadas, {$totalRejected} bloqueadas de {$totalReceived} seleccionadas.",
             'data'    => [
                 'total_received' => $totalReceived,
                 'total_approved' => $totalApproved,
@@ -520,12 +320,27 @@ class QuestionController extends Controller
     }
 
     /**
-     * Rechaza o descarta un reactivo extraído sin eliminar estímulos ni preguntas asociadas.
+     * Rechaza y archiva un reactivo exigiendo motivo obligatorio y conservando todo su historial de IA.
      *
      * POST /api/v1/admin/questions/{id}/reject
      */
     public function reject(Request $request, string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de pregunta no válido.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:2000'],
+            'notes'  => ['nullable', 'string', 'max:2000'],
+        ], [
+            'reason.required' => 'El motivo de rechazo es obligatorio.',
+            'reason.min'      => 'El motivo de rechazo debe tener al menos 5 caracteres.',
+        ]);
+
         $question = Question::with(['stimulus'])->find($id);
 
         if (! $question) {
@@ -535,15 +350,18 @@ class QuestionController extends Controller
             ], 404);
         }
 
-        // Regla: Rechazar pasa el estado a 'archived' dentro del enum de PostgreSQL permitido
-        $question->update([
-            'status' => 'archived',
-        ]);
+        $admin = $request->attributes->get('auth_admin', []);
+        $rejected = $this->workflowService->rejectQuestion(
+            $question,
+            $admin,
+            $validated['reason'],
+            $validated['notes'] ?? null
+        );
 
         return response()->json([
             'success' => true,
-            'message' => 'La pregunta fue rechazada y archivada. Los estímulos compartidos permanecen intactos.',
-            'data'    => $question->fresh(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets']),
+            'message' => 'La pregunta fue rechazada con registro administrativo y archivada. Las resoluciones y auditorías permanecen intactas.',
+            'data'    => $rejected,
         ]);
     }
 }

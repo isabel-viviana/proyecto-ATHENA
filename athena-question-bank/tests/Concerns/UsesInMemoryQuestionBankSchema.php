@@ -136,6 +136,42 @@ trait UsesInMemoryQuestionBankSchema
             $table->timestamps();
         });
 
+        $schema->create('exam_attempts', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('student_id', 255);
+            $table->integer('subject_id')->nullable()->default(1);
+            $table->string('title', 255);
+            $table->string('mode', 50)->default('area');
+            $table->integer('questions_count');
+            $table->integer('duration_minutes');
+            $table->timestampTz('started_at');
+            $table->timestampTz('expires_at');
+            $table->timestampTz('finished_at')->nullable();
+            $table->string('status', 50)->default('in_progress');
+            $table->integer('score')->default(0);
+            $table->integer('correct_answers')->default(0);
+            $table->integer('incorrect_answers')->default(0);
+            $table->integer('omitted_answers')->default(0);
+            $table->decimal('accuracy', 8, 2)->default(0.00);
+            $table->integer('total_time_seconds')->default(0);
+            $table->json('question_ids')->default('[]');
+            $table->json('flagged_question_ids')->default('[]');
+            $table->timestampsTz();
+        });
+
+        $schema->create('exam_attempt_answers', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('attempt_id');
+            $table->uuid('question_id');
+            $table->integer('order_position');
+            $table->uuid('selected_option_id')->nullable();
+            $table->string('selected_option_letter', 1)->nullable();
+            $table->boolean('is_correct')->nullable();
+            $table->integer('time_spent_seconds')->default(0);
+            $table->boolean('flagged')->default(false);
+            $table->timestampsTz();
+        });
+
         // Ejecutar migraciones reales del motor IQPE, student_answers y colas
         foreach ([
             database_path('migrations/0001_01_01_000002_create_jobs_table.php'),
@@ -145,6 +181,7 @@ trait UsesInMemoryQuestionBankSchema
             database_path('migrations/2026_11_12_000003_create_iqpe_verifications_table.php'),
             database_path('migrations/2026_11_12_000004_create_iqpe_quality_audits_table.php'),
             database_path('migrations/2026_11_12_000005_create_iqpe_execution_logs_table.php'),
+            database_path('migrations/2026_11_13_000001_create_iqpe_admin_decisions_table.php'),
         ] as $migrationFile) {
             $migration = require $migrationFile;
             $migration->up();

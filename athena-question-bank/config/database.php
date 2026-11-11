@@ -112,6 +112,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => env('QB_DB_SCHEMA', 'public'),
             'sslmode' => env('QB_DB_SSLMODE', 'require'),
+            'options' => extension_loaded('pdo_pgsql') ? [
+                \PDO::ATTR_EMULATE_PREPARES => true,
+            ] : [],
         ],
 
         'athena_core' => [

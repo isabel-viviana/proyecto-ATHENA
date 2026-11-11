@@ -31,6 +31,13 @@ class ExtractionController extends Controller
      */
     public function extract(string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
+        }
+
         $document = SourceDocument::find($id);
 
         if (! $document) {
@@ -107,6 +114,13 @@ class ExtractionController extends Controller
      */
     public function iqpeStatus(string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
+        }
+
         $document = SourceDocument::find($id);
 
         if (! $document) {
@@ -173,10 +187,19 @@ class ExtractionController extends Controller
         $totalVerifications = (int) $verificationCounts->sum();
         $requiresReviewCount = max(0, $totalVerifications - $verifiedCandidateCount - $verifiedNoKeyCount);
 
-        $auditRecords = IqpeQualityAudit::where('job_id', $latestJob->id)->get(['passed_quality_check', 'duplicate_risk_flag']);
+        $auditRecords = IqpeQualityAudit::where('job_id', $latestJob->id)->get(['passed_quality_check', 'duplicate_risk_flag', 'audit_warnings']);
         $totalAudited = $auditRecords->count();
         $passedQualityCount = $auditRecords->where('passed_quality_check', true)->count();
         $duplicateRiskCount = $auditRecords->where('duplicate_risk_flag', true)->count();
+        $criticalIssuesCount = $auditRecords->filter(function ($a) {
+            $sev = $a->audit_warnings['highest_severity'] ?? 'none';
+            $cls = $a->audit_warnings['overall_classification'] ?? '';
+            return $sev === 'critical' || $cls === 'blocked_critical';
+        })->count();
+
+        $docQuestionsStatuses = Question::where('source_document_id', $id)
+            ->where('is_current_version', true)
+            ->get(['status']);
 
         // Derivar progreso real a partir del estado y etapa cronológica
         $progress = match ($latestJob->status) {
@@ -223,10 +246,14 @@ class ExtractionController extends Controller
                     'requires_admin_review_count'          => $requiresReviewCount,
                 ],
                 'quality_audit_summary'    => [
-                    'total_audited'          => $totalAudited,
-                    'passed_quality_count'   => $passedQualityCount,
-                    'requires_review_count'  => max(0, $totalAudited - $passedQualityCount),
-                    'duplicate_risk_count'   => $duplicateRiskCount,
+                    'total_audited'             => $totalAudited,
+                    'passed_quality_count'      => $passedQualityCount,
+                    'requires_review_count'     => max(0, $totalAudited - $passedQualityCount),
+                    'critical_issues_count'     => $criticalIssuesCount,
+                    'duplicate_risk_count'      => $duplicateRiskCount,
+                    'approved_questions_count'  => $docQuestionsStatuses->where('status', 'review')->count(),
+                    'published_questions_count' => $docQuestionsStatuses->where('status', 'published')->count(),
+                    'rejected_questions_count'  => $docQuestionsStatuses->where('status', 'archived')->count(),
                 ],
                 'started_at'               => $latestJob->started_at?->toIso8601String(),
                 'completed_at'             => $latestJob->completed_at?->toIso8601String(),
@@ -245,6 +272,13 @@ class ExtractionController extends Controller
      */
     public function retry(Request $request, string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
+        }
+
         $document = SourceDocument::find($id);
 
         if (! $document) {
@@ -332,6 +366,13 @@ class ExtractionController extends Controller
      */
     public function retryResolutions(string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
+        }
+
         $document = SourceDocument::find($id);
         if (! $document) {
             return response()->json([
@@ -411,6 +452,13 @@ class ExtractionController extends Controller
      */
     public function questions(string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
+        }
+
         $document = SourceDocument::find($id);
 
         if (! $document) {
@@ -433,13 +481,69 @@ class ExtractionController extends Controller
             ->orderBy('order_in_group', 'asc')
             ->get();
 
+        $latestJob = IqpeDocumentJob::where('source_document_id', $id)
+            ->orderBy('run_number', 'desc')
+            ->first();
+
+        $verificationsByQ = $latestJob
+            ? IqpeVerification::where('job_id', $latestJob->id)->get()->keyBy('question_id')
+            : collect();
+        $auditsByQ = $latestJob
+            ? IqpeQualityAudit::where('job_id', $latestJob->id)->get()->keyBy('question_id')
+            : collect();
+        $resolutionsByQ = $latestJob
+            ? IqpeQuestionResolution::where('job_id', $latestJob->id)->get()->groupBy('question_id')
+            : collect();
+
+        $enriched = $questions->map(function (Question $q) use ($latestJob, $verificationsByQ, $auditsByQ, $resolutionsByQ) {
+            $arr = $q->toArray();
+            $v = $verificationsByQ->get($q->id);
+            $a = $auditsByQ->get($q->id);
+            $res = ($resolutionsByQ->get($q->id) ?? collect())->keyBy('round_number');
+
+            $arr['iqpe_summary'] = $latestJob ? [
+                'job_id' => $latestJob->id,
+                'resolutions_summary' => [
+                    'r1_letter' => $res->get(1)?->solved_option_letter,
+                    'r1_status' => $res->get(1)?->status,
+                    'r2_letter' => $res->get(2)?->solved_option_letter,
+                    'r2_status' => $res->get(2)?->status,
+                    'r3_letter' => $res->get(3)?->solved_option_letter,
+                    'r3_status' => $res->get(3)?->status,
+                ],
+                'verification_status' => $v ? [
+                    'verdict'               => $v->verdict,
+                    'recommended_status'    => $v->recommended_status,
+                    'requires_admin_review' => $v->requires_admin_review,
+                    'is_approved_by_admin'  => $v->is_approved_by_admin,
+                    'confidence_index'      => $v->confidence_index,
+                    'discrepancy_details'   => $v->discrepancy_details,
+                ] : null,
+                'quality_audit_status' => $a ? [
+                    'passed_quality_check'   => $a->passed_quality_check,
+                    'overall_classification' => $a->audit_warnings['overall_classification'] ?? 'requires_review',
+                    'highest_severity'       => $a->audit_warnings['highest_severity'] ?? 'none',
+                    'findings_count'         => $a->audit_warnings['findings_count'] ?? 0,
+                    'media_integrity_status' => $a->media_integrity_status,
+                ] : null,
+                'duplicate_status' => [
+                    'duplicate_risk_flag'         => (bool) ($a?->duplicate_risk_flag ?? false),
+                    'classification'              => $a?->audit_warnings['duplicate_assessment']['classification'] ?? 'independent',
+                    'duplicate_candidate_id'      => $a?->duplicate_candidate_id,
+                    'involves_published_question' => (bool) ($a?->audit_warnings['duplicate_assessment']['involves_published_question'] ?? false),
+                ],
+            ] : null;
+
+            return $arr;
+        })->values()->all();
+
         return response()->json([
             'success' => true,
             'data'    => [
                 'document_id'     => $document->id,
                 'title'           => $document->title,
-                'total_questions' => $questions->count(),
-                'questions'       => $questions,
+                'total_questions' => count($enriched),
+                'questions'       => $enriched,
             ],
         ]);
     }
@@ -451,6 +555,13 @@ class ExtractionController extends Controller
      */
     public function audit(Request $request, string $id, IqpeQualityAuditService $qualityAuditService): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
+        }
+
         $document = SourceDocument::find($id);
 
         if (! $document) {

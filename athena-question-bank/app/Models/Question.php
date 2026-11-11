@@ -119,5 +119,30 @@ class Question extends Model
             ->orderBy('page_number', 'asc')
             ->orderBy('created_at', 'asc');
     }
+
+    public function iqpeResolutions(): HasMany
+    {
+        return $this->hasMany(IqpeQuestionResolution::class, 'question_id')
+            ->orderBy('created_at', 'desc')
+            ->orderBy('round_number', 'asc');
+    }
+
+    public function iqpeVerifications(): HasMany
+    {
+        return $this->hasMany(IqpeVerification::class, 'question_id')
+            ->orderBy('created_at', 'desc');
+    }
+
+    public function iqpeQualityAudits(): HasMany
+    {
+        return $this->hasMany(IqpeQualityAudit::class, 'question_id')
+            ->orderBy('created_at', 'desc');
+    }
+
+    public function iqpeAdminDecisions(): HasMany
+    {
+        return $this->hasMany(IqpeAdminDecision::class, 'question_id')
+            ->orderBy('created_at', 'desc');
+    }
 }
 

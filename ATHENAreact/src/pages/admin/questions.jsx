@@ -9,11 +9,14 @@ import {
     getExtractionStatus,
     getIqpeStatus,
     retryDocumentProcessing,
+    retryDocumentResolutions,
     getExtractedQuestions,
     getQuestion,
     updateQuestion,
     approveQuestion,
     rejectQuestion,
+    returnQuestionToReview,
+    publishQuestion,
     getSubjectsCatalog,
     getTopicsCatalog,
     getQuestions,
@@ -23,6 +26,13 @@ import {
     runDocumentAudit,
 } from "../../api/documents";
 import { MediaImage, StimulusMedia, QuestionMedia, MediaAssociationPanel } from "../../components/admin/QuestionMedia";
+import IqpeReviewInbox from "../../components/admin/IqpeReviewInbox";
+import IqpeQuestionDetailModal from "../../components/admin/IqpeQuestionDetailModal";
+import {
+    IqpeReasonActionModal,
+    IqpeApproveConfirmModal,
+    IqpePublishConfirmModal,
+} from "../../components/admin/IqpeDecisionModals";
 
 // Mapeo de áreas académicas oficiales del ICFES
 const SUBJECT_MAP = {
@@ -41,6 +51,9 @@ const QuestionCardItem = ({
     onEdit,
     onApprove,
     onReject,
+    onOpenDetail = null,
+    onPublish = null,
+    onReturnToReview = null,
     isProcessingAction,
     isSelected = false,
     onToggleSelect = null,
@@ -330,6 +343,19 @@ const QuestionCardItem = ({
                 </div>
 
                 <div className="qst-actions-buttons-group">
+                    {onOpenDetail && (
+                        <button
+                            type="button"
+                            className="qst-btn-outline"
+                            onClick={() => onOpenDetail(q)}
+                            disabled={isProcessingAction}
+                            title="Ver resoluciones R1/R2/R3, clave oficial, auditoría y duplicados"
+                        >
+                            <i className="fa-solid fa-magnifying-glass-chart"></i>
+                            <span>Detalle IQPE</span>
+                        </button>
+                    )}
+
                     <button
                         type="button"
                         className="qst-btn-action-edit"
@@ -344,12 +370,14 @@ const QuestionCardItem = ({
                     <button
                         type="button"
                         className="qst-btn-action-approve"
-                        onClick={() => onApprove(q)}
-                        disabled={isProcessingAction || isApproved}
+                        onClick={() => onApprove(q, q.iqpe_summary?.eligibility || null)}
+                        disabled={isProcessingAction || isApproved || isPublished}
                         title={
-                            isApproved
-                                ? "Pregunta ya aprobada para el banco"
-                                : "Aprobar pedagógicamente para el banco oficial"
+                            isPublished
+                                ? "Pregunta ya publicada"
+                                : isApproved
+                                ? "Pregunta ya aprobada para revisión final"
+                                : "Aprobar administrativamente (pasa a estado review sin publicar)"
                         }
                     >
                         {isProcessingAction ? (
@@ -360,16 +388,45 @@ const QuestionCardItem = ({
                         <span>{isApproved ? "Aprobada" : "Aprobar"}</span>
                     </button>
 
-                    <button
-                        type="button"
-                        className="qst-btn-action-reject"
-                        onClick={() => onReject(q)}
-                        disabled={isProcessingAction || isArchived}
-                        title="Rechazar y archivar reactivo sin afectar estímulo"
-                    >
-                        <i className="fa-solid fa-ban"></i>
-                        <span>{isArchived ? "Archivada" : "Rechazar"}</span>
-                    </button>
+                    {isApproved && onPublish && (
+                        <button
+                            type="button"
+                            className="qst-btn-save"
+                            style={{ padding: "6px 12px", fontSize: "0.78rem", background: "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)" }}
+                            onClick={() => onPublish(q, q.iqpe_summary?.eligibility || null)}
+                            disabled={isProcessingAction}
+                            title="Publicar pregunta aprobada para estudiantes"
+                        >
+                            <i className="fa-solid fa-globe"></i>
+                            <span>Publicar</span>
+                        </button>
+                    )}
+
+                    {(isApproved || isArchived || isPublished) && onReturnToReview && (
+                        <button
+                            type="button"
+                            className="qst-btn-outline"
+                            onClick={() => onReturnToReview(q)}
+                            disabled={isProcessingAction}
+                            title="Devolver a revisión/corrección conservando historial"
+                        >
+                            <i className="fa-solid fa-rotate-left"></i>
+                            <span>Devolver</span>
+                        </button>
+                    )}
+
+                    {!isPublished && (
+                        <button
+                            type="button"
+                            className="qst-btn-action-reject"
+                            onClick={() => onReject(q)}
+                            disabled={isProcessingAction || isArchived}
+                            title="Rechazar y archivar reactivo con motivo obligatorio"
+                        >
+                            <i className="fa-solid fa-ban"></i>
+                            <span>{isArchived ? "Archivada" : "Rechazar"}</span>
+                        </button>
+                    )}
                 </div>
             </div>
         </article>
@@ -495,6 +552,8 @@ const Questions = () => {
         difficulty: "medium",
         key_status: "unverified",
         correct_option: "A",
+        notes: "",
+        confirm_official_key: false,
         options: {
             A: "",
             B: "",
@@ -506,8 +565,17 @@ const Questions = () => {
     const [isLoadingTopics, setIsLoadingTopics] = useState(false);
     const [isSavingEdit, setIsSavingEdit] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState(null);
-    const [isConfirmRejectOpen, setIsConfirmRejectOpen] = useState(false);
-    const [questionToReject, setQuestionToReject] = useState(null);
+
+    // =========================================================
+    // 3.5 ESTADOS BLOQUE 6: BANDEJA IQPE, DETALLE Y DECISIONES
+    // =========================================================
+    const [docGlobalStats, setDocGlobalStats] = useState(null);
+    const [reviewQueueNonce, setReviewQueueNonce] = useState(0);
+    const [detailQuestionId, setDetailQuestionId] = useState(null);
+    const [detailRefreshNonce, setDetailRefreshNonce] = useState(0);
+    const [approveModalState, setApproveModalState] = useState({ isOpen: false, question: null, eligibility: null });
+    const [publishModalState, setPublishModalState] = useState({ isOpen: false, question: null, eligibility: null });
+    const [reasonModalState, setReasonModalState] = useState({ isOpen: false, mode: "reject", question: null });
 
     // =========================================================
     // 3.3 ESTADOS: SELECCIÓN MÚLTIPLE Y APROBACIÓN MASIVA
@@ -562,6 +630,9 @@ const Questions = () => {
             const response = await getDocuments(params);
             if (response && response.success) {
                 setDocuments(response.data || []);
+                if (response.global_stats) {
+                    setDocGlobalStats(response.global_stats);
+                }
             } else {
                 setDocuments([]);
             }
@@ -950,14 +1021,15 @@ const Questions = () => {
         }
     };
 
-    const handleRetryProcessing = async () => {
-        if (!selectedExtractionDocId || isExtracting) return;
+    const handleRetryProcessing = async (docIdOverride = null) => {
+        const targetDocId = typeof docIdOverride === "string" && docIdOverride ? docIdOverride : selectedExtractionDocId;
+        if (!targetDocId || isExtracting) return;
         setIsExtracting(true);
         setExtractionError(null);
         setExtractionSuccess(null);
 
         try {
-            const res = await retryDocumentProcessing(selectedExtractionDocId);
+            const res = await retryDocumentProcessing(targetDocId);
             if (res?.success) {
                 setExtractionSuccess(res.message || "Reintento IQPE encolado en segundo plano. Monitoreando ejecución...");
                 if (res.data) {
@@ -971,6 +1043,31 @@ const Questions = () => {
         } catch (err) {
             console.error("Error al reintentar procesamiento:", err);
             const msg = err.response?.data?.message || err.message || "Error al solicitar reintento.";
+            setExtractionError(msg);
+            setIsExtracting(false);
+        }
+    };
+
+    const handleRetryResolutionsOnly = async () => {
+        if (!selectedExtractionDocId || isExtracting) return;
+        setIsExtracting(true);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+
+        try {
+            const res = await retryDocumentResolutions(selectedExtractionDocId);
+            if (res?.success) {
+                setExtractionSuccess(res.message || "Reanudación de resoluciones R1/R2/R3 encolada sin re-extraer el PDF.");
+                if (res.data) {
+                    setIqpeJobData(res.data);
+                }
+                await fetchDocuments();
+            } else {
+                setExtractionError(res?.message || "No se pudieron reanudar las resoluciones.");
+                setIsExtracting(false);
+            }
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || "Error al reanudar resoluciones.";
             setExtractionError(msg);
             setIsExtracting(false);
         }
@@ -1041,6 +1138,8 @@ const Questions = () => {
             difficulty: q.difficulty || "medium",
             key_status: isKeyVerified ? "verified" : "unverified",
             correct_option: correctLetter,
+            notes: "",
+            confirm_official_key: false,
             options: optionsObj,
         });
 
@@ -1094,6 +1193,8 @@ const Questions = () => {
                 difficulty: editForm.difficulty,
                 key_status: editForm.key_status,
                 correct_option: editForm.correct_option,
+                notes: editForm.notes?.trim() || null,
+                confirm_official_key: Boolean(editForm.confirm_official_key),
                 options: optionsArray,
             };
 
@@ -1109,6 +1210,8 @@ const Questions = () => {
                 setBankQuestions((prev) =>
                     prev.map((item) => (item.id === editingQuestion.id ? { ...item, ...res.data } : item))
                 );
+                setReviewQueueNonce((n) => n + 1);
+                setDetailRefreshNonce((n) => n + 1);
                 fetchBankQuestions();
             } else {
                 setExtractionError(res?.message || "No se pudo actualizar la pregunta.");
@@ -1122,22 +1225,42 @@ const Questions = () => {
         }
     };
 
-    const handleApprove = async (q) => {
+    const syncQuestionAcrossViews = (updatedQ) => {
+        if (!updatedQ?.id) return;
+        setExtractedQuestions((prev) =>
+            prev.map((item) => (item.id === updatedQ.id ? { ...item, ...updatedQ } : item))
+        );
+        setBankQuestions((prev) =>
+            prev.map((item) => (item.id === updatedQ.id ? { ...item, ...updatedQ } : item))
+        );
+        setReviewQueueNonce((n) => n + 1);
+        setDetailRefreshNonce((n) => n + 1);
+        fetchBankQuestions();
+    };
+
+    const handleOpenIqpeDetail = (q) => {
+        if (!q?.id) return;
+        setDetailQuestionId(q.id);
+    };
+
+    const handleApprove = (q, eligibility = null) => {
+        setApproveModalState({ isOpen: true, question: q, eligibility });
+    };
+
+    const handleConfirmApprove = async (payload) => {
+        const q = approveModalState.question;
+        if (!q) return;
+
         setActionLoadingId(q.id);
         setExtractionError(null);
         setExtractionSuccess(null);
 
         try {
-            const res = await approveQuestion(q.id);
+            const res = await approveQuestion(q.id, payload);
             if (res && res.success) {
-                setExtractionSuccess(`¡Pregunta #${q.order_in_group || q.id.slice(0, 8)} aprobada pedagógicamente para el banco oficial!`);
-                setExtractedQuestions((prev) =>
-                    prev.map((item) => (item.id === q.id ? { ...item, ...res.data } : item))
-                );
-                setBankQuestions((prev) =>
-                    prev.map((item) => (item.id === q.id ? { ...item, ...res.data } : item))
-                );
-                fetchBankQuestions();
+                setExtractionSuccess(`¡Pregunta #${q.order_in_group || q.id.slice(0, 8)} aprobada administrativamente (estado review, sin publicar)!`);
+                syncQuestionAcrossViews(res.data);
+                setApproveModalState({ isOpen: false, question: null, eligibility: null });
             } else {
                 setExtractionError(res?.message || "No fue posible aprobar la pregunta.");
             }
@@ -1145,6 +1268,37 @@ const Questions = () => {
             console.error("Error al aprobar pregunta:", err);
             const msg = err.response?.data?.message || err.message || "Fallo al aprobar la pregunta.";
             setExtractionError(msg);
+            setApproveModalState({ isOpen: false, question: null, eligibility: null });
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    const handleRequestPublish = (q, eligibility = null) => {
+        setPublishModalState({ isOpen: true, question: q, eligibility });
+    };
+
+    const handleConfirmPublish = async (payload) => {
+        const q = publishModalState.question;
+        if (!q) return;
+
+        setActionLoadingId(q.id);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+
+        try {
+            const res = await publishQuestion(q.id, payload);
+            if (res && res.success) {
+                setExtractionSuccess(`¡Pregunta #${q.order_in_group || q.id.slice(0, 8)} publicada en el banco oficial para estudiantes!`);
+                syncQuestionAcrossViews(res.data);
+                setPublishModalState({ isOpen: false, question: null, eligibility: null });
+            } else {
+                setExtractionError(res?.message || "No fue posible publicar la pregunta.");
+            }
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || "Error al publicar la pregunta.";
+            setExtractionError(msg);
+            setPublishModalState({ isOpen: false, question: null, eligibility: null });
         } finally {
             setActionLoadingId(null);
         }
@@ -1235,41 +1389,51 @@ const Questions = () => {
     };
 
     const handlePromptReject = (q) => {
-        setQuestionToReject(q);
-        setIsConfirmRejectOpen(true);
+        setReasonModalState({ isOpen: true, mode: "reject", question: q });
     };
 
-    const handleConfirmReject = async () => {
-        if (!questionToReject) return;
-        setActionLoadingId(questionToReject.id);
+    const handleRequestReturnToReview = (q) => {
+        setReasonModalState({ isOpen: true, mode: "return_to_review", question: q });
+    };
+
+    const handleConfirmReasonAction = async ({ reason, notes }) => {
+        const q = reasonModalState.question;
+        const mode = reasonModalState.mode;
+        if (!q) return;
+
+        setActionLoadingId(q.id);
         setExtractionError(null);
         setExtractionSuccess(null);
 
         try {
-            const res = await rejectQuestion(questionToReject.id);
+            const res = mode === "return_to_review"
+                ? await returnQuestionToReview(q.id, { reason, notes })
+                : await rejectQuestion(q.id, { reason, notes });
+
             if (res && res.success) {
                 setExtractionSuccess(
-                    `Pregunta #${questionToReject.order_in_group || questionToReject.id.slice(0, 8)} rechazada y archivada. Los estímulos compartidos permanecen intactos.`
+                    mode === "return_to_review"
+                        ? `Pregunta #${q.order_in_group || q.id.slice(0, 8)} devuelta a revisión conservando su historial.`
+                        : `Pregunta #${q.order_in_group || q.id.slice(0, 8)} rechazada con motivo registrado y archivada.`
                 );
-                setExtractedQuestions((prev) =>
-                    prev.map((item) => (item.id === questionToReject.id ? { ...item, ...res.data } : item))
-                );
-                setBankQuestions((prev) =>
-                    prev.map((item) => (item.id === questionToReject.id ? { ...item, ...res.data } : item))
-                );
-                fetchBankQuestions();
-                setIsConfirmRejectOpen(false);
-                setQuestionToReject(null);
+                syncQuestionAcrossViews(res.data);
+                setReasonModalState({ isOpen: false, mode: "reject", question: null });
             } else {
-                setExtractionError(res?.message || "No fue posible rechazar la pregunta.");
+                setExtractionError(res?.message || "No fue posible completar la acción.");
             }
         } catch (err) {
-            console.error("Error al rechazar pregunta:", err);
-            const msg = err.response?.data?.message || err.message || "Fallo al rechazar la pregunta.";
+            console.error("Error en acción administrativa:", err);
+            const msg = err.response?.data?.message || err.message || "Error al ejecutar la acción administrativa.";
             setExtractionError(msg);
         } finally {
             setActionLoadingId(null);
         }
+    };
+
+    const handleRetryDocRow = async (doc) => {
+        setSelectedExtractionDocId(doc.id);
+        setActiveTab("ai_extraction");
+        await handleRetryProcessing(doc.id);
     };
 
     // Objeto del documento seleccionado para extracción
@@ -1333,10 +1497,8 @@ const Questions = () => {
     }, [filteredExtractedQuestions]);
 
     useEffect(() => {
-        if (activeTab === "ai_extraction") {
-            if (documents.length === 0 && !isLoadingDocs) {
-                fetchDocuments();
-            }
+        if ((activeTab === "ai_extraction" || activeTab === "review_queue") && documents.length === 0 && !isLoadingDocs) {
+            fetchDocuments();
         }
     }, [activeTab, documents.length, isLoadingDocs, fetchDocuments]);
 
@@ -1401,6 +1563,18 @@ const Questions = () => {
 
                 <button
                     type="button"
+                    className={`qst-tab-btn ${activeTab === "review_queue" ? "qst-tab-btn--active" : ""}`}
+                    onClick={() => setActiveTab("review_queue")}
+                >
+                    <i className="fa-solid fa-clipboard-check"></i>
+                    <span>Bandeja de Revisión IQPE</span>
+                    <span className="qst-tab-badge">
+                        {bankStats.draft_count ?? 0}
+                    </span>
+                </button>
+
+                <button
+                    type="button"
                     className={`qst-tab-btn ${activeTab === "documents" ? "qst-tab-btn--active" : ""}`}
                     onClick={() => setActiveTab("documents")}
                 >
@@ -1421,6 +1595,43 @@ const Questions = () => {
                     </span>
                 </button>
             </nav>
+
+            {activeTab !== "ai_extraction" && extractionSuccess && (
+                <div className="qst-alert qst-alert--success">
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <i className="fa-solid fa-circle-check"></i>
+                        <span>{extractionSuccess}</span>
+                    </div>
+                    <button className="qst-alert-close" onClick={() => setExtractionSuccess(null)} aria-label="Cerrar notificación">
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            )}
+
+            {activeTab !== "ai_extraction" && extractionError && (
+                <div className="qst-alert qst-alert--error">
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <i className="fa-solid fa-triangle-exclamation"></i>
+                        <span>{extractionError}</span>
+                    </div>
+                    <button className="qst-alert-close" onClick={() => setExtractionError(null)} aria-label="Cerrar error">
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            )}
+
+            {activeTab === "review_queue" && (
+                <IqpeReviewInbox
+                    documents={documents}
+                    refreshNonce={reviewQueueNonce}
+                    onOpenDetail={handleOpenIqpeDetail}
+                    onEdit={handleOpenEdit}
+                    onRequestApprove={handleApprove}
+                    onRequestReject={handlePromptReject}
+                    onRequestReturnToReview={handleRequestReturnToReview}
+                    onRequestPublish={handleRequestPublish}
+                />
+            )}
 
             {/* MENSAJES DE ESTADO (TOASTS / ALERTS) */}
             {docSuccess && (
@@ -1465,7 +1676,7 @@ const Questions = () => {
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
                                 <span className="qst-stat-label">Total Cuadernillos</span>
-                                <span className="qst-stat-val">{documents.length}</span>
+                                <span className="qst-stat-val">{docGlobalStats?.total_documents ?? documents.length}</span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--green">
                                 <i className="fa-solid fa-book-bookmark"></i>
@@ -1474,33 +1685,33 @@ const Questions = () => {
 
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
-                                <span className="qst-stat-label">Almacenamiento Seguro</span>
-                                <span className="qst-stat-val">icfes-documents</span>
+                                <span className="qst-stat-label">Extraídas Totales (IQPE)</span>
+                                <span className="qst-stat-val">{docGlobalStats?.total_extracted ?? documents.reduce((acc, d) => acc + (d.iqpe_summary?.total_extracted || 0), 0)}</span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--blue">
-                                <i className="fa-solid fa-shield-halved"></i>
+                                <i className="fa-solid fa-list-ol"></i>
                             </div>
                         </div>
 
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
-                                <span className="qst-stat-label">Microservicio Activo</span>
-                                <span className="qst-stat-val">Puerto 8001</span>
+                                <span className="qst-stat-label">Publicadas / Aprobadas</span>
+                                <span className="qst-stat-val">{(docGlobalStats?.total_published ?? 0)} / {(docGlobalStats?.total_approved_review ?? 0)}</span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--purple">
-                                <i className="fa-solid fa-network-wired"></i>
+                                <i className="fa-solid fa-globe"></i>
                             </div>
                         </div>
 
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
-                                <span className="qst-stat-label">Con Clave de Respuesta</span>
-                                <span className="qst-stat-val">
-                                    {documents.filter((d) => d.has_answer_key).length}
+                                <span className="qst-stat-label">Trabajos con Error</span>
+                                <span className="qst-stat-val" style={{ color: (docGlobalStats?.failed_jobs_count || 0) > 0 ? "#f87171" : undefined }}>
+                                    {docGlobalStats?.failed_jobs_count ?? documents.filter((d) => (d.latest_job?.status || d.status) === "failed").length}
                                 </span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--amber">
-                                <i className="fa-solid fa-key"></i>
+                                <i className="fa-solid fa-triangle-exclamation"></i>
                             </div>
                         </div>
                     </section>
@@ -1579,10 +1790,9 @@ const Questions = () => {
                                 <thead>
                                     <tr>
                                         <th>Título del Cuadernillo</th>
-                                        <th>Año</th>
-                                        <th>Convocatoria</th>
-                                        <th>Respuestas</th>
-                                        <th>Estado</th>
+                                        <th>Año / Clave</th>
+                                        <th>Métricas IQPE (Verif / Rev / Crít / Dup)</th>
+                                        <th>Estado / Trabajo</th>
                                         <th>Fecha Registro</th>
                                         <th style={{ textAlign: "center" }}>Acciones</th>
                                     </tr>
@@ -1590,7 +1800,7 @@ const Questions = () => {
                                 <tbody>
                                     {isLoadingDocs ? (
                                         <tr>
-                                            <td colSpan="7" style={{ textAlign: "center", padding: "40px" }}>
+                                            <td colSpan="6" style={{ textAlign: "center", padding: "40px" }}>
                                                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
                                                     <span className="qst-spinner"></span>
                                                     <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
@@ -1600,7 +1810,11 @@ const Questions = () => {
                                             </td>
                                         </tr>
                                     ) : documents.length > 0 ? (
-                                        documents.map((doc) => (
+                                        documents.map((doc) => {
+                                            const summary = doc.iqpe_summary || {};
+                                            const job = doc.latest_job;
+                                            const effectiveStatus = job?.status || doc.status;
+                                            return (
                                             <tr key={doc.id}>
                                                 {/* Título */}
                                                 <td>
@@ -1609,53 +1823,72 @@ const Questions = () => {
                                                         <div>
                                                             <div style={{ fontWeight: 600, color: "#f8fafc" }}>{doc.title}</div>
                                                             <div style={{ fontSize: "0.72rem", color: "#64748b", fontFamily: "monospace" }}>
-                                                                {doc.id.substring(0, 18)}...
+                                                                {doc.id.substring(0, 18)}... • {doc.exam_type || "Saber 11"}
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </td>
 
-                                                {/* Año */}
+                                                {/* Año y Respuestas */}
                                                 <td>
-                                                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>
+                                                    <div style={{ fontWeight: 600, color: "#cbd5e1", fontSize: "0.84rem" }}>
                                                         {doc.year || "N/A"}
-                                                    </span>
-                                                </td>
-
-                                                {/* Convocatoria */}
-                                                <td>
-                                                    <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                                                        {doc.exam_type || "Saber 11"}
-                                                    </span>
-                                                </td>
-
-                                                {/* Respuestas */}
-                                                <td>
+                                                    </div>
                                                     {doc.has_answer_key ? (
-                                                        <span style={{ color: "#22c55e", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                                                        <span style={{ color: "#22c55e", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                                             <i className="fa-solid fa-check"></i> Con Clave
                                                         </span>
                                                     ) : (
-                                                        <span style={{ color: "#64748b", fontSize: "0.82rem" }}>Sin Clave</span>
+                                                        <span style={{ color: "#64748b", fontSize: "0.75rem" }}>Sin Clave</span>
                                                     )}
                                                 </td>
 
-                                                {/* Estado */}
+                                                {/* Métricas IQPE */}
+                                                <td>
+                                                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", fontSize: "0.74rem" }}>
+                                                        <span className="qst-iqpe-pill qst-iqpe-pill--blue" title="Total extraídas">
+                                                            {summary.total_extracted ?? 0} Ext
+                                                        </span>
+                                                        <span className="qst-iqpe-pill qst-iqpe-pill--green" title="Verificadas">
+                                                            {summary.verified_count ?? 0} Verif
+                                                        </span>
+                                                        <span className="qst-iqpe-pill qst-iqpe-pill--amber" title="Requieren revisión">
+                                                            {summary.requires_review_count ?? 0} Rev
+                                                        </span>
+                                                        {(summary.critical_issues_count || 0) > 0 && (
+                                                            <span className="qst-iqpe-pill qst-iqpe-pill--red" title="Problemas críticos">
+                                                                {summary.critical_issues_count} Crít
+                                                            </span>
+                                                        )}
+                                                        {(summary.duplicate_risk_count || 0) > 0 && (
+                                                            <span className="qst-iqpe-pill qst-iqpe-pill--purple" title="Posibles duplicados">
+                                                                {summary.duplicate_risk_count} Dup
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Estado y Error de Trabajo */}
                                                 <td>
                                                     <span
                                                         className={`qst-doc-badge ${
-                                                            doc.status === "extracted"
+                                                            effectiveStatus === "extracted" || effectiveStatus === "completed"
                                                                 ? "qst-doc-badge--extracted"
-                                                                : doc.status === "uploaded"
+                                                                : effectiveStatus === "uploaded" || effectiveStatus === "queued"
                                                                 ? "qst-doc-badge--uploaded"
-                                                                : doc.status === "processing"
+                                                                : ["processing", "extracting", "solving_round_1", "solving_round_2", "verifying", "solving_round_3", "auditing"].includes(effectiveStatus)
                                                                 ? "qst-doc-badge--processing"
                                                                 : "qst-doc-badge--failed"
                                                         }`}
                                                     >
                                                         <span className="qst-status-dot"></span>
-                                                        {doc.status}
+                                                        {effectiveStatus}{job?.run_number ? ` (#${job.run_number})` : ""}
                                                     </span>
+                                                    {job?.error_log && (
+                                                        <div style={{ fontSize: "0.7rem", color: "#fca5a5", marginTop: "4px", maxWidth: "220px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={job.error_log}>
+                                                            Error: {job.error_log}
+                                                        </div>
+                                                    )}
                                                 </td>
 
                                                 {/* Fecha */}
@@ -1672,9 +1905,20 @@ const Questions = () => {
                                                 {/* Acciones */}
                                                 <td>
                                                     <div className="qst-actions-cell" style={{ justifyContent: "center" }}>
+                                                        {effectiveStatus === "failed" && (
+                                                            <button
+                                                                className="qst-action-btn"
+                                                                title="Reintentar trabajo IQPE fallido"
+                                                                type="button"
+                                                                onClick={() => handleRetryDocRow(doc)}
+                                                                style={{ color: "#f87171", borderColor: "rgba(239, 68, 68, 0.4)" }}
+                                                            >
+                                                                <i className="fa-solid fa-rotate-right"></i>
+                                                            </button>
+                                                        )}
                                                         <button
                                                             className="qst-action-btn"
-                                                            title="Extraer o revisar con Gemini"
+                                                            title="Ver procesamiento y preguntas extraídas"
                                                             type="button"
                                                             onClick={() => handleGoToExtraction(doc)}
                                                             style={{ color: "#c084fc", borderColor: "rgba(168, 85, 247, 0.35)" }}
@@ -1708,10 +1952,11 @@ const Questions = () => {
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))
+                                            );
+                                        })
                                     ) : (
                                         <tr>
-                                            <td colSpan="7">
+                                            <td colSpan="6">
                                                 <div className="qst-empty-state">
                                                     <i className="fa-solid fa-folder-open"></i>
                                                     <p>No se encontraron cuadernillos en el banco.</p>
@@ -2079,6 +2324,9 @@ const Questions = () => {
                                                             onEdit={handleOpenEdit}
                                                             onApprove={handleApprove}
                                                             onReject={handlePromptReject}
+                                                            onOpenDetail={handleOpenIqpeDetail}
+                                                            onPublish={handleRequestPublish}
+                                                            onReturnToReview={handleRequestReturnToReview}
                                                             isProcessingAction={actionLoadingId === q.id}
                                                         />
                                                     ))}
@@ -2097,6 +2345,9 @@ const Questions = () => {
                                             onEdit={handleOpenEdit}
                                             onApprove={handleApprove}
                                             onReject={handlePromptReject}
+                                            onOpenDetail={handleOpenIqpeDetail}
+                                            onPublish={handleRequestPublish}
+                                            onReturnToReview={handleRequestReturnToReview}
                                             isProcessingAction={actionLoadingId === q.id}
                                         />
                                     );
@@ -2321,29 +2572,55 @@ const Questions = () => {
                                     )}
                                 </button>
 
-                                {/* Botón para reintentar sin volver a subir el PDF */}
+                                {/* Botón para reintentar o reanudar resoluciones sin volver a subir el PDF */}
                                 {((selectedExtractionDocObj?.status === "failed" || iqpeJobData?.status === "failed") && !isExtracting) && (
-                                    <button
-                                        type="button"
-                                        onClick={handleRetryProcessing}
-                                        style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            gap: "8px",
-                                            background: "rgba(239, 68, 68, 0.15)",
-                                            color: "#f87171",
-                                            border: "1px solid rgba(239, 68, 68, 0.35)",
-                                            padding: "9px 16px",
-                                            borderRadius: "8px",
-                                            cursor: "pointer",
-                                            fontWeight: 700,
-                                            fontSize: "0.85rem",
-                                        }}
-                                        title="Reintentar procesamiento IQPE sin volver a subir el documento"
-                                    >
-                                        <i className="fa-solid fa-rotate-right"></i>
-                                        <span>Reintentar procesamiento</span>
-                                    </button>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRetryProcessing()}
+                                            style={{
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: "8px",
+                                                background: "rgba(239, 68, 68, 0.15)",
+                                                color: "#f87171",
+                                                border: "1px solid rgba(239, 68, 68, 0.35)",
+                                                padding: "9px 16px",
+                                                borderRadius: "8px",
+                                                cursor: "pointer",
+                                                fontWeight: 700,
+                                                fontSize: "0.85rem",
+                                            }}
+                                            title="Reintentar procesamiento IQPE sin volver a subir el documento"
+                                        >
+                                            <i className="fa-solid fa-rotate-right"></i>
+                                            <span>Reintentar procesamiento</span>
+                                        </button>
+
+                                        {extractedQuestions.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={handleRetryResolutionsOnly}
+                                                style={{
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: "8px",
+                                                    background: "rgba(245, 158, 11, 0.15)",
+                                                    color: "#fbbf24",
+                                                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                                                    padding: "9px 16px",
+                                                    borderRadius: "8px",
+                                                    cursor: "pointer",
+                                                    fontWeight: 700,
+                                                    fontSize: "0.85rem",
+                                                }}
+                                                title="Reanudar solo resoluciones R1/R2/R3 y verificación pendientes sin re-extraer"
+                                            >
+                                                <i className="fa-solid fa-play"></i>
+                                                <span>Reanudar Resoluciones</span>
+                                            </button>
+                                        )}
+                                    </>
                                 )}
 
                                 <button
@@ -2508,19 +2785,19 @@ const Questions = () => {
                                     </div>
                                 </div>
 
-                                {/* KPI 7: Estímulos y Medios Asociados / Pendientes */}
+                                {/* KPI 7: Críticas & Duplicados + Estímulos */}
                                 <div className="qst-extraction-kpi-card">
                                     <div>
-                                        <div className="qst-extraction-kpi-label">Estímulos & Recursos</div>
-                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "1.05rem" }}>
-                                            {qualityAudit?.stimuli_count ?? groupedExtraction.stimuliGroups.length} Est • {qualityAudit?.media_assets_count ?? (docMedia?.confirmed?.length || 0)} Rec
+                                        <div className="qst-extraction-kpi-label">Críticas & Duplicados</div>
+                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "1.05rem", color: (iqpeJobData?.quality_audit_summary?.critical_issues_count || iqpeJobData?.quality_audit_summary?.duplicate_risk_count) ? "#fca5a5" : "#4ade80" }}>
+                                            {iqpeJobData?.quality_audit_summary?.critical_issues_count ?? 0} Crít • {iqpeJobData?.quality_audit_summary?.duplicate_risk_count ?? 0} Dup
                                         </div>
-                                        <div style={{ fontSize: "0.72rem", color: (qualityAudit?.pending_media_count ?? 0) > 0 ? "#fbbf24" : "#94a3b8", marginTop: "2px" }}>
-                                            {(qualityAudit?.pending_media_count ?? 0) > 0 ? `${qualityAudit.pending_media_count} recursos pendientes` : "Recursos asociados"}
+                                        <div style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: "2px" }}>
+                                            {qualityAudit?.stimuli_count ?? groupedExtraction.stimuliGroups.length} Est • {qualityAudit?.media_assets_count ?? (docMedia?.confirmed?.length || 0)} Rec
                                         </div>
                                     </div>
                                     <div className="qst-extraction-kpi-icon" style={{ background: "rgba(249, 115, 22, 0.15)", color: "#f97316" }}>
-                                        <i className="fa-solid fa-photo-film"></i>
+                                        <i className="fa-solid fa-shield-halved"></i>
                                     </div>
                                 </div>
                             </div>
@@ -2895,6 +3172,9 @@ const Questions = () => {
                                                     onEdit={handleOpenEdit}
                                                     onApprove={handleApprove}
                                                     onReject={handlePromptReject}
+                                                    onOpenDetail={handleOpenIqpeDetail}
+                                                    onPublish={handleRequestPublish}
+                                                    onReturnToReview={handleRequestReturnToReview}
                                                     isProcessingAction={actionLoadingId === q.id}
                                                     showCheckbox={true}
                                                     isSelected={selectedQuestionIds.has(q.id)}
@@ -2924,6 +3204,9 @@ const Questions = () => {
                                             onEdit={handleOpenEdit}
                                             onApprove={handleApprove}
                                             onReject={handlePromptReject}
+                                            onOpenDetail={handleOpenIqpeDetail}
+                                            onPublish={handleRequestPublish}
+                                            onReturnToReview={handleRequestReturnToReview}
                                             isProcessingAction={actionLoadingId === q.id}
                                             showCheckbox={true}
                                             isSelected={selectedQuestionIds.has(q.id)}
@@ -3706,6 +3989,33 @@ const Questions = () => {
                                         disabled={isSavingEdit}
                                     ></textarea>
                                 </div>
+
+                                {/* Observación administrativa de trazabilidad / motivo de cambio de clave */}
+                                <div className="qst-form-group" style={{ background: "rgba(56, 189, 248, 0.06)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: "8px", padding: "12px" }}>
+                                    <label className="qst-form-label">
+                                        Observación Administrativa / Motivo de Cambio o Clave Manual
+                                    </label>
+                                    <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: "0 0 8px 0" }}>
+                                        Si asigna clave a una pregunta sin clave oficial o modifica una clave verificada existente, quedará registrado con su usuario y fecha (obligatorio cuando cambia una clave oficial existente).
+                                    </p>
+                                    <textarea
+                                        rows="2"
+                                        className="qst-form-textarea"
+                                        placeholder="Ej: Clave calibrada manualmente por comité académico / errata corregida..."
+                                        value={editForm.notes || ""}
+                                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                                        disabled={isSavingEdit}
+                                    ></textarea>
+                                    <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", cursor: "pointer", fontSize: "0.8rem", color: "#cbd5e1" }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(editForm.confirm_official_key)}
+                                            onChange={(e) => setEditForm({ ...editForm, confirm_official_key: e.target.checked })}
+                                            style={{ accentColor: "#38bdf8" }}
+                                        />
+                                        <span>Confirmar resolución de discrepancia manteniendo o calibrando la clave indicada</span>
+                                    </label>
+                                </div>
                             </div>
 
                             <div className="qst-modal-footer">
@@ -3741,75 +4051,46 @@ const Questions = () => {
             )}
 
             {/* =========================================================
-                MODAL 6: CONFIRMAR RECHAZO DE REACTIVO (FASE 2.9)
+                MODALES BLOQUE 6: DETALLE IQPE, APROBACIÓN, RECHAZO/DEVOLUCIÓN Y PUBLICACIÓN
                 ========================================================= */}
-            {isConfirmRejectOpen && questionToReject && (
-                <div className="qst-modal-overlay" onClick={() => !actionLoadingId && setIsConfirmRejectOpen(false)}>
-                    <div className="qst-modal-card" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
-                        <div className="qst-modal-header">
-                            <h2 className="qst-modal-title" style={{ color: "#ef4444" }}>
-                                <i className="fa-solid fa-triangle-exclamation"></i>
-                                Confirmar Rechazo de Reactivo
-                            </h2>
-                            <button
-                                className="qst-modal-close-btn"
-                                onClick={() => !actionLoadingId && setIsConfirmRejectOpen(false)}
-                                disabled={Boolean(actionLoadingId)}
-                                aria-label="Cerrar modal"
-                            >
-                                <i className="fa-solid fa-xmark"></i>
-                            </button>
-                        </div>
+            <IqpeQuestionDetailModal
+                isOpen={Boolean(detailQuestionId)}
+                questionId={detailQuestionId}
+                refreshNonce={detailRefreshNonce}
+                onClose={() => setDetailQuestionId(null)}
+                onEdit={handleOpenEdit}
+                onRequestApprove={handleApprove}
+                onRequestReject={handlePromptReject}
+                onRequestReturnToReview={handleRequestReturnToReview}
+                onRequestPublish={handleRequestPublish}
+            />
 
-                        <div className="qst-modal-body">
-                            <p style={{ color: "#f8fafc", fontSize: "0.92rem", margin: "0 0 10px 0" }}>
-                                ¿Deseas rechazar y archivar este reactivo extraído?
-                            </p>
-                            <div style={{ background: "rgba(10, 17, 40, 0.7)", padding: "12px 14px", borderRadius: "8px", border: "1px solid var(--qst-border)", marginBottom: "12px" }}>
-                                <div style={{ fontWeight: 700, color: "#ffffff", marginBottom: "4px" }}>
-                                    Pregunta #{questionToReject.order_in_group || questionToReject.id.slice(0, 8)}
-                                </div>
-                                <div style={{ fontSize: "0.82rem", color: "#94a3b8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                                    {questionToReject.statement}
-                                </div>
-                            </div>
-                            <p style={{ color: "#94a3b8", fontSize: "0.82rem", margin: 0 }}>
-                                <i className="fa-solid fa-shield-halved" style={{ color: "#22c55e" }}></i> El reactivo cambiará a estado <strong>Archivada</strong>. Los textos de estímulo compartidos y demás preguntas del cuadernillo permanecerán totalmente intactos.
-                            </p>
-                        </div>
+            <IqpeApproveConfirmModal
+                isOpen={approveModalState.isOpen}
+                question={approveModalState.question}
+                eligibility={approveModalState.eligibility}
+                isLoading={Boolean(actionLoadingId)}
+                onClose={() => setApproveModalState({ isOpen: false, question: null, eligibility: null })}
+                onConfirm={handleConfirmApprove}
+            />
 
-                        <div className="qst-modal-footer">
-                            <button
-                                type="button"
-                                className="qst-btn-cancel"
-                                onClick={() => setIsConfirmRejectOpen(false)}
-                                disabled={Boolean(actionLoadingId)}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
-                                className="qst-btn-save"
-                                style={{ background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", boxShadow: "0 4px 12px rgba(239, 68, 68, 0.3)" }}
-                                onClick={handleConfirmReject}
-                                disabled={Boolean(actionLoadingId)}
-                            >
-                                {actionLoadingId ? (
-                                    <>
-                                        <span className="qst-spinner" style={{ width: "14px", height: "14px" }}></span>
-                                        <span>Archivando...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <i className="fa-solid fa-ban"></i>
-                                        <span>Confirmar Rechazo</span>
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <IqpePublishConfirmModal
+                isOpen={publishModalState.isOpen}
+                question={publishModalState.question}
+                eligibility={publishModalState.eligibility}
+                isLoading={Boolean(actionLoadingId)}
+                onClose={() => setPublishModalState({ isOpen: false, question: null, eligibility: null })}
+                onConfirm={handleConfirmPublish}
+            />
+
+            <IqpeReasonActionModal
+                isOpen={reasonModalState.isOpen}
+                mode={reasonModalState.mode}
+                question={reasonModalState.question}
+                isLoading={Boolean(actionLoadingId)}
+                onClose={() => setReasonModalState({ isOpen: false, mode: "reject", question: null })}
+                onConfirm={handleConfirmReasonAction}
+            />
             {/* Modal de Resumen de Aprobación Masiva */}
             {isBulkSummaryOpen && bulkSummary && (
                 <div className="qst-modal-overlay" onClick={() => setIsBulkSummaryOpen(false)}>

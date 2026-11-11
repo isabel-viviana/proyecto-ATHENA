@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import "./AdminLayout.css";
 import logoImg from "../assets/images/Zorrito_8.png";
+import { getAdminMe } from "../api/documents";
 
 const AdminLayout = () => {
     const location = useLocation();
@@ -13,7 +14,22 @@ const AdminLayout = () => {
         const token = localStorage.getItem("athena_admin_token");
         if (!token) {
             navigate("/admin/login");
+            return;
         }
+        getAdminMe()
+            .then((res) => {
+                if (res?.success && res?.admin) {
+                    localStorage.setItem("athena_admin_user", JSON.stringify(res.admin));
+                }
+            })
+            .catch((err) => {
+                const status = err?.response?.status;
+                if (status === 401 || status === 403) {
+                    localStorage.removeItem("athena_admin_token");
+                    localStorage.removeItem("athena_admin_user");
+                    navigate("/admin/login");
+                }
+            });
     }, [navigate]);
 
     // Identificar el rol actual según la ruta

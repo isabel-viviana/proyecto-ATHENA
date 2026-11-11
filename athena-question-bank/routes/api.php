@@ -3,11 +3,12 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuthController;
+use App\Http\Controllers\Api\V1\Admin\CatalogController;
 use App\Http\Controllers\Api\V1\Admin\DocumentController;
 use App\Http\Controllers\Api\V1\Admin\ExtractionController;
-use App\Http\Controllers\Api\V1\Admin\QuestionController;
-use App\Http\Controllers\Api\V1\Admin\CatalogController;
+use App\Http\Controllers\Api\V1\Admin\IqpeReviewController;
 use App\Http\Controllers\Api\V1\Admin\MediaController;
+use App\Http\Controllers\Api\V1\Admin\QuestionController;
 use App\Http\Controllers\Api\V1\Student\StudentQuestionController;
 use App\Http\Controllers\Api\V1\Student\StudentAuthController;
 use App\Http\Controllers\Api\V1\Student\StudentProfileController;
@@ -77,14 +78,20 @@ Route::prefix('v1')->group(function () {
                 Route::delete('/{id}/association', [MediaController::class, 'disassociate']);
             });
 
+            // Bandeja Unificada de Revisión IQPE
+            Route::get('/iqpe/review-queue', [IqpeReviewController::class, 'reviewQueue']);
+
             // Revisión y Calibración Pedagógica de Reactivos
             Route::prefix('questions')->group(function () {
                 Route::get('/', [QuestionController::class, 'index']);
                 Route::post('/bulk-approve', [QuestionController::class, 'bulkApprove']);
                 Route::get('/{id}', [QuestionController::class, 'show']);
+                Route::get('/{id}/iqpe-detail', [IqpeReviewController::class, 'detail']);
                 Route::put('/{id}', [QuestionController::class, 'update']);
                 Route::post('/{id}/approve', [QuestionController::class, 'approve']);
                 Route::post('/{id}/reject', [QuestionController::class, 'reject']);
+                Route::post('/{id}/return-to-review', [IqpeReviewController::class, 'returnToReview']);
+                Route::post('/{id}/publish', [IqpeReviewController::class, 'publish']);
             });
         });
     });
