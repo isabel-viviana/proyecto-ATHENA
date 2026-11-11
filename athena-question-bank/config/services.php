@@ -36,9 +36,13 @@ return [
     ],
 
     'gemini' => [
-        'api_key'        => env('GEMINI_API_KEY'),
-        'model'          => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
-        'fallback_model' => env('GEMINI_FALLBACK_MODEL', 'gemini-3.5-flash'),
+        'api_key'               => env('GEMINI_API_KEY'),
+        'model'                 => env('GEMINI_MODEL', 'gemini-3-flash-preview'),
+        'fallback_model'        => env('GEMINI_FALLBACK_MODEL', 'gemini-3.1-flash-lite'),
+        'solver_model'          => env('GEMINI_SOLVER_MODEL', 'gemini-3-flash-preview'),
+        'solver_fallback_model' => env('GEMINI_SOLVER_FALLBACK_MODEL', 'gemini-3.1-flash-lite'),
+        'solver_concurrency'    => (int) env('GEMINI_SOLVER_CONCURRENCY', 1),
+        'solver_cooldown_ms'    => (int) env('GEMINI_SOLVER_COOLDOWN_MS', 1500),
     ],
 
     'athena' => [

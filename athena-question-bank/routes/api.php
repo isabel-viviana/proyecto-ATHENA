@@ -61,6 +61,7 @@ Route::prefix('v1')->group(function () {
                 Route::get('/{id}/iqpe-status', [ExtractionController::class, 'iqpeStatus']);
                 Route::get('/{id}/extraction-status', [ExtractionController::class, 'status']);
                 Route::post('/{id}/retry', [ExtractionController::class, 'retry']);
+                Route::post('/{id}/retry-resolutions', [ExtractionController::class, 'retryResolutions']);
                 Route::get('/{id}/extracted-questions', [ExtractionController::class, 'questions']);
                 Route::get('/{id}/audit', [ExtractionController::class, 'audit']);
                 Route::post('/{id}/audit', [ExtractionController::class, 'audit']);
