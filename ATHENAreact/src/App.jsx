@@ -120,6 +120,7 @@ function App() {
 
                     <Route path="/ranking" element={<Ranking />} />
                     <Route path="/statistics" element={<Statistics />} />
+                    <Route path="/notifications" element={<Navigate to="/profile/notifications" replace />} />
                     <Route path="/analysis" element={<Analysis />} />
                     <Route path="/store" element={<Store />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />

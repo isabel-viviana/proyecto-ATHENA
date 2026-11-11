@@ -1,0 +1,147 @@
+A continuación se presenta la información detallada, transcribiendo y describiendo con precisión los elementos solicitados para cada una de las páginas especificadas:
+
+---
+
+### 1. PÁGINA 12 (Pregunta 12)
+
+#### **Contexto e Información Base**
+- **Eje Y (común en todas las gráficas):** Muestra *Costos en pesos*.
+- **Eje X (común en todas las gráficas):** Dividido en dos categorías: **Ciudad W** y **Ciudad Z**.
+- **Convención / Leyenda (común en todas las gráficas):**
+  - **Barra 1 (patrón con cuadrícula / trama diagonal):** *Costo transporte camiones*.
+  - **Barra 2 (patrón con líneas verticales):** *Costo pago trabajadores*.
+
+---
+
+#### **Descripción de las 4 gráficas (A, B, C, D):**
+
+- **Gráfica A:**
+  - **Escala del Eje Y:** De $0$ a $450.000$ (intervalos de $50.000$).
+  - **Ciudad W:**
+    - Costo transporte camiones: $\$150.000$
+    - Costo pago trabajadores: $\$360.000$
+  - **Ciudad Z:**
+    - Costo transporte camiones: $\$180.000$
+    - Costo pago trabajadores: $\$400.000$
+
+- **Gráfica B (Opción Correcta):**
+  - **Escala del Eje Y:** De $0$ a $900.000$ (intervalos de $100.000$).
+  - **Ciudad W:**
+    - Costo transporte camiones: $\$300.000$ (correspondiente a 2 camiones)
+    - Costo pago trabajadores: $\$720.000$ (correspondiente a 4 trabajadores)
+  - **Ciudad Z:**
+    - Costo transporte camiones: $\$360.000$ (correspondiente a 2 camiones)
+    - Costo pago trabajadores: $\$800.000$ (correspondiente a 4 trabajadores)
+
+- **Gráfica C:**
+  - **Escala del Eje Y:** De $0$ a $450.000$ (intervalos de $50.000$).
+  - **Ciudad W:**
+    - Costo transporte camiones: $\$300.000$
+    - Costo pago trabajadores: $\$360.000$
+  - **Ciudad Z:**
+    - Costo transporte camiones: $\$360.000$
+    - Costo pago trabajadores: $\$400.000$
+
+- **Gráfica D:**
+  - **Escala del Eje Y:** De $0$ a $900.000$ (intervalos de $100.000$).
+  - **Ciudad W:**
+    - Costo transporte camiones: $\$300.000$
+    - Costo pago trabajadores: $\$800.000$
+  - **Ciudad Z:**
+    - Costo transporte camiones: $\$300.000$
+    - Costo pago trabajadores: $\$720.000$
+
+---
+
+### 2. PÁGINA 27 (Pregunta 42)
+
+#### **Medidas de la cancha de fútbol original (Enunciado/Figura):**
+- **Ancho (eje vertical):** $60\text{ metros}$
+- **Largo (eje horizontal):** $100\text{ metros}$
+
+---
+
+#### **Medidas rotuladas en cada maqueta de las opciones:**
+
+- **Opción A:**
+  - Ancho: $6 \times 10^{-2}\text{ metros}$
+  - Largo: $1 \times 10^{-2}\text{ metros}$
+
+- **Opción B:**
+  - Ancho: $6 \times 10^{-2}\text{ centímetros}$
+  - Largo: $1 \times 10^{-2}\text{ centímetros}$
+
+- **Opción C:**
+  - Ancho: $6 \times 10^{1}\text{ metros}$
+  - Largo: $1 \times 10^{2}\text{ metros}$
+
+- **Opción D (Opción Correcta):**
+  - Ancho: $6 \times 10^{1}\text{ centímetros}$ (equivale a $60\text{ cm}$)
+  - Largo: $1 \times 10^{2}\text{ centímetros}$ (equivale a $100\text{ cm}$)
+
+---
+
+### 3. PÁGINA 28 (Pregunta 43)
+
+#### **Transcripción del enunciado y función:**
+- **Enunciado:** *"El área de los rectángulos que se pueden construir a partir del origen, los ejes y un punto que pertenece a la gráfica de la función $f(x) = \frac{5}{x}$, donde $x > 0$, se describe con la expresión $A_x = x f(x)$."*
+- **Expresión analítica de $A_x$:**  
+  $$A_x = x \cdot \left(\frac{5}{x}\right) = 5 \quad \text{para } x > 0$$
+
+---
+
+#### **Descripción de las gráficas en el plano cartesiano $xy$:**
+
+- **Opción A:**
+  - **Tipo de curva:** Recta con pendiente positiva.
+  - **Puntos/Cortes:** Pasa por el origen $(0,0)$ y por el punto $(2,10)$.
+  - **Cortes:** En $(0,0)$ con ambos ejes.
+
+- **Opción B (Opción Correcta):**
+  - **Tipo de curva:** Línea recta horizontal (constante $y = 5$).
+  - **Corte con eje Y:** En el punto $(0,5)$ representado con un círculo.
+  - **Corte con eje X:** No tiene (es paralela al eje X para $x > 0$).
+
+- **Opción C:**
+  - **Tipo de curva:** Curva creciente con concavidad hacia arriba (forma cuadrática/exponencial).
+  - **Puntos/Cortes:** Nace en el origen $(0,0)$ y sube hacia el cuadrante I pasando por $(18,10)$.
+
+- **Opción D:**
+  - **Tipo de curva:** Parábola/curva cóncava hacia abajo.
+  - **Corte con eje Y:** En el punto $(0,5)$.
+  - **Corte con eje X:** Corta el eje X aproximadamente en $x = 5$.
+
+---
+
+### 4. PÁGINA 32 (Pregunta 50)
+
+#### **Dimensiones rotuladas de los tres empaques:**
+
+1. **Empaque 1: Cilindro**
+   - Altura: $h = 2$
+   - Radio de la base: $r = \frac{3}{2}$
+
+2. **Empaque 2: Caja de base cuadrada**
+   - Altura: $h = 2$
+   - Lado de la base: $L = \frac{3}{2}$
+
+3. **Empaque 3: Esfera**
+   - Radio: $r = \frac{3}{2}$
+
+---
+
+#### **Fórmulas y comparación de volúmenes:**
+
+- **Volumen del Cilindro ($V_1$):**
+  $$V_{\text{cilindro}} = \pi \cdot r^2 \cdot h = \pi \cdot \left(\frac{3}{2}\right)^2 \cdot 2 = \pi \cdot \frac{9}{4} \cdot 2 = \frac{9\pi}{2} \approx 14,137$$
+
+- **Volumen de la Caja ($V_2$):**
+  $$V_{\text{caja}} = L^2 \cdot h = \left(\frac{3}{2}\right)^2 \cdot 2 = \frac{9}{4} \cdot 2 = \frac{9}{2} = 4,5$$
+
+- **Volumen de la Esfera ($V_3$):**
+  $$V_{\text{esfera}} = \frac{4}{3} \pi r^3 = \frac{4}{3} \pi \left(\frac{3}{2}\right)^3 = \frac{4}{3} \pi \cdot \frac{27}{8} = \frac{9\pi}{2} \approx 14,137$$
+
+- **Relación resultante:**
+  - $V_{\text{cilindro}} > V_{\text{caja}}$  (ya que $\frac{9\pi}{2} > 4,5$).
+  - $V_{\text{esfera}} = V_{\text{cilindro}}$  (ambos son iguales a $\frac{9\pi}{2}$).
+  - Esto corresponde a la opción **A**.

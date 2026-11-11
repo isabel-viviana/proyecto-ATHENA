@@ -331,6 +331,7 @@ class StudentQuestionController extends Controller
     /**
      * Consulta el resumen de progreso y desempeño del estudiante autenticado
      * calculado en tiempo real a partir de student_answers en PostgreSQL.
+     * Soporta filtros por período (7d, 30d, all) y análisis pedagógico por área ICFES.
      *
      * GET /api/v1/student/progress
      */
@@ -339,7 +340,14 @@ class StudentQuestionController extends Controller
         $authStudent = $this->getAuthenticatedStudent($request);
         $studentId = $authStudent ? (string) $authStudent['sub'] : $request->input('student_id', '1');
 
+        $period = $request->input('period', 'all'); // '7d', '30d', 'all'
+
         $answersQuery = StudentAnswer::where('student_id', $studentId);
+        if ($period === '7d') {
+            $answersQuery->where('answered_at', '>=', now()->subDays(7));
+        } elseif ($period === '30d') {
+            $answersQuery->where('answered_at', '>=', now()->subDays(30));
+        }
 
         $totalAnswered = (clone $answersQuery)->count();
         $correctCount = (clone $answersQuery)->where('is_correct', true)->count();
@@ -347,34 +355,125 @@ class StudentQuestionController extends Controller
         $accuracy = $totalAnswered > 0 ? round(($correctCount / $totalAnswered) * 100, 1) : 0;
         $totalTimeSeconds = (clone $answersQuery)->sum('time_spent_seconds');
 
-        // Desglose por Materia
-        $bySubject = DB::connection('question_bank')
+        // Cálculo de Racha Real de Días de Estudio (días consecutivos con actividad)
+        $dates = StudentAnswer::where('student_id', $studentId)
+            ->select(DB::raw('DATE(answered_at) as practice_date'))
+            ->groupBy(DB::raw('DATE(answered_at)'))
+            ->orderBy('practice_date', 'desc')
+            ->pluck('practice_date')
+            ->map(fn($d) => substr((string) $d, 0, 10))
+            ->all();
+
+        $realStreak = 0;
+        $currentDate = now()->toDateString();
+        $yesterdayDate = now()->subDay()->toDateString();
+
+        if (!empty($dates)) {
+            if ($dates[0] === $currentDate || $dates[0] === $yesterdayDate) {
+                $checkDate = \Carbon\Carbon::parse($dates[0]);
+                $realStreak = 1;
+                for ($i = 1; $i < count($dates); $i++) {
+                    $prevDate = \Carbon\Carbon::parse($dates[$i]);
+                    if ($checkDate->diffInDays($prevDate) === 1) {
+                        $realStreak++;
+                        $checkDate = $prevDate;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Evolución temporal y actividad diaria
+        $dailyActivity = (clone $answersQuery)
+            ->select(
+                DB::raw('DATE(answered_at) as date'),
+                DB::raw('count(id) as total'),
+                DB::raw('sum(case when is_correct = true then 1 else 0 end) as correct'),
+                DB::raw('sum(case when is_correct = false then 1 else 0 end) as incorrect'),
+                DB::raw('round(avg(time_spent_seconds), 1) as avg_time')
+            )
+            ->groupBy(DB::raw('DATE(answered_at)'))
+            ->orderBy('date', 'asc')
+            ->get()
+            ->map(function ($row) {
+                $tot = (int) $row->total;
+                $corr = (int) $row->correct;
+                return [
+                    'date'             => (string) $row->date,
+                    'total'            => $tot,
+                    'correct'          => $corr,
+                    'incorrect'        => (int) $row->incorrect,
+                    'accuracy'         => $tot > 0 ? round(($corr / $tot) * 100, 1) : 0,
+                    'avg_time_seconds' => (float) $row->avg_time,
+                ];
+            });
+
+        // Desglose oficial de las 5 Áreas del ICFES
+        $allSubjects = Subject::orderBy('id', 'asc')->get();
+        $subjectCounts = Question::where('status', 'published')
+            ->select('subject_id', DB::raw('count(*) as count'))
+            ->groupBy('subject_id')
+            ->pluck('count', 'subject_id')
+            ->all();
+
+        $answeredBySubjectRaw = DB::connection('question_bank')
             ->table('student_answers as sa')
             ->join('questions as q', 'sa.question_id', '=', 'q.id')
-            ->join('subjects as s', 'q.subject_id', '=', 's.id')
             ->where('sa.student_id', $studentId)
+            ->when($period === '7d', fn($q) => $q->where('sa.answered_at', '>=', now()->subDays(7)))
+            ->when($period === '30d', fn($q) => $q->where('sa.answered_at', '>=', now()->subDays(30)))
             ->select(
-                's.id as subject_id',
-                's.name as subject_name',
+                'q.subject_id',
                 DB::raw('count(sa.id) as total_answered'),
                 DB::raw('sum(case when sa.is_correct = true then 1 else 0 end) as correct_count'),
                 DB::raw('round(avg(sa.time_spent_seconds), 1) as avg_time_seconds')
             )
-            ->groupBy('s.id', 's.name')
+            ->groupBy('q.subject_id')
             ->get()
-            ->map(function ($item) {
-                $total = (int) $item->total_answered;
-                $correct = (int) $item->correct_count;
-                return [
-                    'subject_id'       => $item->subject_id,
-                    'subject_name'     => $item->subject_name,
-                    'total_answered'   => $total,
-                    'correct_count'    => $correct,
-                    'incorrect_count'  => $total - $correct,
-                    'accuracy'         => $total > 0 ? round(($correct / $total) * 100, 1) : 0,
-                    'avg_time_seconds' => (float) $item->avg_time_seconds,
-                ];
-            });
+            ->keyBy('subject_id');
+
+        $bySubject = $allSubjects->map(function ($s) use ($answeredBySubjectRaw, $subjectCounts) {
+            $raw = $answeredBySubjectRaw->get($s->id);
+            $total = $raw ? (int) $raw->total_answered : 0;
+            $correct = $raw ? (int) $raw->correct_count : 0;
+            $publishedInBank = $subjectCounts[$s->id] ?? 0;
+
+            return [
+                'subject_id'       => $s->id,
+                'subject_name'     => $s->name,
+                'subject_code'     => $s->code,
+                'published_in_bank'=> $publishedInBank,
+                'status'           => $publishedInBank > 0 ? 'Activo' : 'Próximamente',
+                'total_answered'   => $total,
+                'correct_count'    => $correct,
+                'incorrect_count'  => $total - $correct,
+                'accuracy'         => $total > 0 ? round(($correct / $total) * 100, 1) : 0,
+                'avg_time_seconds' => $raw ? (float) $raw->avg_time_seconds : 0.0,
+            ];
+        });
+
+        // Análisis Académico basado estrictamente en datos reales
+        $activePracticed = $bySubject->filter(fn($s) => $s['total_answered'] > 0);
+        $strongestArea = $activePracticed->sortByDesc('accuracy')->first();
+        $weakestArea = $activePracticed->sortBy('accuracy')->first();
+
+        $academicAnalysis = [
+            'has_sufficient_data' => $totalAnswered >= 3,
+            'strongest_area'      => $strongestArea ? [
+                'name'     => $strongestArea['subject_name'],
+                'accuracy' => $strongestArea['accuracy'],
+                'answered' => $strongestArea['total_answered'],
+            ] : null,
+            'needs_practice_area' => ($weakestArea && $weakestArea['accuracy'] < 70) ? [
+                'name'     => $weakestArea['subject_name'],
+                'accuracy' => $weakestArea['accuracy'],
+                'answered' => $weakestArea['total_answered'],
+            ] : null,
+            'pedagogical_advice'  => $totalAnswered > 0
+                ? "Has resuelto {$totalAnswered} reactivos oficiales. " . ($accuracy >= 75 ? "¡Excelente nivel de comprensión lectora!" : "Continúa practicando textos discontinuos y argumentación para alcanzar tu meta.")
+                : "Aún no registras preguntas resueltas en este período. Comienza una sesión de práctica para activar tu análisis.",
+        ];
 
         // Actividad reciente (últimas 10 respuestas)
         $recentAnswers = DB::connection('question_bank')
@@ -399,14 +498,20 @@ class StudentQuestionController extends Controller
         return response()->json([
             'success' => true,
             'data'    => [
-                'student_id'        => $studentId,
-                'total_answered'    => $totalAnswered,
-                'correct_count'     => $correctCount,
-                'incorrect_count'   => $incorrectCount,
-                'accuracy'          => $accuracy,
-                'total_time_seconds'=> (int) $totalTimeSeconds,
-                'by_subject'        => $bySubject,
-                'recent_activity'   => $recentAnswers,
+                'student_id'         => $studentId,
+                'period'             => $period,
+                'summary'            => [
+                    'total_answered'     => $totalAnswered,
+                    'correct_count'      => $correctCount,
+                    'incorrect_count'    => $incorrectCount,
+                    'accuracy'           => $accuracy,
+                    'total_time_seconds' => (int) $totalTimeSeconds,
+                    'streak_days'        => $realStreak,
+                ],
+                'by_subject'         => $bySubject->values()->all(),
+                'daily_activity'     => $dailyActivity->values()->all(),
+                'academic_analysis'  => $academicAnalysis,
+                'recent_activity'    => $recentAnswers,
             ],
         ]);
     }

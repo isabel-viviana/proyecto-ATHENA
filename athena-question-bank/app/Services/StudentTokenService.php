@@ -51,7 +51,7 @@ class StudentTokenService
         ];
 
         $payload = [
-            'sub'   => (string) ($user['id'] ?? '1'),
+            'sub'   => (string) ($user['id'] ?? $user['sub'] ?? '1'),
             'name'  => $user['name'] ?? $user['full_name'] ?? 'Estudiante ATHENA',
             'email' => $user['email'] ?? '',
             'role'  => $user['role'] ?? 'student',

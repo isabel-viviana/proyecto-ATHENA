@@ -54,9 +54,91 @@ export const getStudentProfile = async () => {
 
 /**
  * Consulta el progreso, aciertos y métricas históricas del estudiante en tiempo real.
+ * Soporta filtro de período: '7d', '30d', 'all'.
  */
-export const getStudentProgress = async () => {
-    const res = await questionBankApi.get('/student/progress');
+export const getStudentProgress = async (period = 'all') => {
+    const res = await questionBankApi.get('/student/progress', { params: { period } });
+    return res.data;
+};
+
+/**
+ * Consulta el perfil institucional completo del estudiante (datos personales, académicos y gamificación).
+ */
+export const getStudentProfileData = async () => {
+    const res = await questionBankApi.get('/student/profile');
+    return res.data;
+};
+
+/**
+ * Actualiza los campos permitidos del perfil del estudiante.
+ */
+export const updateStudentProfileData = async (data) => {
+    const res = await questionBankApi.put('/student/profile', data);
+    return res.data;
+};
+
+/**
+ * Cambia la contraseña institucional verificando la actual.
+ */
+export const changeStudentPassword = async (data) => {
+    const res = await questionBankApi.post('/student/profile/password', data);
+    return res.data;
+};
+
+/**
+ * Consulta el ranking institucional oficial de estudiantes con Top 3 y posición del usuario.
+ */
+export const getStudentRanking = async () => {
+    const res = await questionBankApi.get('/student/ranking');
+    return res.data;
+};
+
+/**
+ * Consulta la posición específica del estudiante autenticado en el ranking.
+ */
+export const getMyRanking = async () => {
+    const res = await questionBankApi.get('/student/ranking/me');
+    return res.data;
+};
+
+/**
+ * Consulta las notificaciones institucionales del estudiante.
+ * Filtro opcional: 'all', 'unread', 'read'.
+ */
+export const getStudentNotifications = async (filter = 'all') => {
+    const res = await questionBankApi.get('/student/notifications', { params: { filter } });
+    return res.data;
+};
+
+/**
+ * Obtiene el número de notificaciones no leídas para el badge del menú.
+ */
+export const getUnreadNotificationsCount = async () => {
+    const res = await questionBankApi.get('/student/notifications/unread-count');
+    return res.data;
+};
+
+/**
+ * Marca una notificación específica como leída.
+ */
+export const markNotificationAsRead = async (id) => {
+    const res = await questionBankApi.patch(`/student/notifications/${id}/read`);
+    return res.data;
+};
+
+/**
+ * Marca todas las notificaciones pendientes como leídas.
+ */
+export const markAllNotificationsAsRead = async () => {
+    const res = await questionBankApi.patch('/student/notifications/read-all');
+    return res.data;
+};
+
+/**
+ * Elimina una notificación de la bandeja.
+ */
+export const deleteStudentNotification = async (id) => {
+    const res = await questionBankApi.delete(`/student/notifications/${id}`);
     return res.data;
 };
 
