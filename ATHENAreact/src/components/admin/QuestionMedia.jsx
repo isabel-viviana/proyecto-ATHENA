@@ -4,18 +4,44 @@ import {
     associateMediaAsset,
     disassociateMediaAsset,
 } from "../../api/documents";
+import questionBankApi from "../../api/questionBankApi";
 
 /**
- * Imagen servida por el backend con proporciones originales, ampliable (lightbox)
+ * Imagen servida por el backend autenticado con proporciones originales, ampliable (lightbox)
  * y con fallback si el recurso no carga (evita imágenes rotas).
  */
 export const MediaImage = ({ path, alt, maxHeight = 360, meta = null, showZoomButton = false }) => {
     const [failed, setFailed] = useState(false);
     const [open, setOpen] = useState(false);
-    const url = getMediaUrl(path);
+    const [blobUrl, setBlobUrl] = useState(null);
 
     useEffect(() => {
+        if (!path) {
+            setBlobUrl(null);
+            return;
+        }
+
+        let isMounted = true;
+        let currentObjectUrl = null;
         setFailed(false);
+
+        questionBankApi
+            .get("/admin/media", { params: { path }, responseType: "blob" })
+            .then((res) => {
+                if (!isMounted) return;
+                currentObjectUrl = URL.createObjectURL(res.data);
+                setBlobUrl(currentObjectUrl);
+            })
+            .catch(() => {
+                if (isMounted) setFailed(true);
+            });
+
+        return () => {
+            isMounted = false;
+            if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+            }
+        };
     }, [path]);
 
     useEffect(() => {
@@ -25,7 +51,9 @@ export const MediaImage = ({ path, alt, maxHeight = 360, meta = null, showZoomBu
         return () => window.removeEventListener("keydown", onKey);
     }, [open]);
 
-    if (!url || failed) {
+    const url = blobUrl;
+
+    if (!path || failed) {
         return (
             <div
                 className="qst-media-missing"
@@ -43,6 +71,27 @@ export const MediaImage = ({ path, alt, maxHeight = 360, meta = null, showZoomBu
             >
                 <i className="fa-solid fa-image"></i>
                 <span>No se pudo cargar el recurso visual.</span>
+            </div>
+        );
+    }
+
+    if (!url) {
+        return (
+            <div
+                style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    background: "rgba(15, 23, 42, 0.4)",
+                    border: "1px solid rgba(148, 163, 184, 0.2)",
+                    color: "#94a3b8",
+                    fontSize: "0.78rem",
+                }}
+            >
+                <i className="fa-solid fa-spinner fa-spin"></i>
+                <span>Cargando recurso visual...</span>
             </div>
         );
     }

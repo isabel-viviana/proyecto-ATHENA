@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    'gemini' => [
+        'api_key'        => env('GEMINI_API_KEY'),
+        'model'          => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
+        'fallback_model' => env('GEMINI_FALLBACK_MODEL', 'gemini-3.5-flash'),
+    ],
+
+    'athena' => [
+        'jwt_secret'     => env('ATHENA_JWT_SECRET', 'athena_saber11_fallback_secret_2026'),
+        'admin_email'    => env('ATHENA_ADMIN_EMAIL', 'admin@athena.edu.co'),
+        'admin_password' => env('ATHENA_ADMIN_PASSWORD', 'admin123456'),
+        'admin_key'      => env('ATHENA_ADMIN_KEY', 'athena_iqpe_super_secret_admin_key_2026'),
+    ],
+
 ];

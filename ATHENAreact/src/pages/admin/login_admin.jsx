@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./login_admin.css";
 import ZorritoLogo from "../../assets/images/Zorrito6.png";
+import { adminLogin } from "../../api/documents";
 
 const LoginAdmin = () => {
     const [email, setEmail] = useState("");
@@ -11,7 +12,7 @@ const LoginAdmin = () => {
 
     const navigate = useNavigate();
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
 
@@ -22,11 +23,24 @@ const LoginAdmin = () => {
 
         setIsSubmitting(true);
 
-        // Simulación de ingreso y redirección requerida a /super/dashboard
-        setTimeout(() => {
+        try {
+            const res = await adminLogin(email.trim(), password);
+            if (res && res.success && res.token) {
+                localStorage.setItem("athena_admin_token", res.token);
+                localStorage.setItem("athena_admin_user", JSON.stringify(res.admin));
+                navigate("/super/dashboard");
+            } else {
+                setError(res?.message || "Credenciales administrativas inválidas.");
+            }
+        } catch (err) {
+            console.error("Error en login administrativo:", err);
+            setError(
+                err?.response?.data?.message ||
+                "Credenciales no válidas. Verifica correo y contraseña de administrador."
+            );
+        } finally {
             setIsSubmitting(false);
-            navigate("/super/dashboard");
-        }, 500);
+        }
     };
 
     return (

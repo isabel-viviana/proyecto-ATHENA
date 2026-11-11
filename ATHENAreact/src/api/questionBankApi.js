@@ -13,10 +13,15 @@ const questionBankApi = axios.create({
     },
 });
 
-// Interceptor para inyectar token JWT del estudiante autenticado en cada petición
+// Interceptor para inyectar token JWT correspondiente según el tipo de ruta (/admin vs /student)
 questionBankApi.interceptors.request.use((config) => {
     try {
-        const token = localStorage.getItem('athena_token');
+        const url = String(config.url || '');
+        const isAdminRoute = url.startsWith('/admin') || url.includes('/admin/');
+        const token = isAdminRoute
+            ? localStorage.getItem('athena_admin_token')
+            : localStorage.getItem('athena_token');
+
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import "./AdminLayout.css";
@@ -8,6 +8,13 @@ const AdminLayout = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    useEffect(() => {
+        const token = localStorage.getItem("athena_admin_token");
+        if (!token) {
+            navigate("/admin/login");
+        }
+    }, [navigate]);
 
     // Identificar el rol actual según la ruta
     const isSuper = location.pathname.startsWith("/super");
@@ -44,6 +51,8 @@ const AdminLayout = () => {
     ];
 
     const handleLogout = () => {
+        localStorage.removeItem("athena_admin_token");
+        localStorage.removeItem("athena_admin_user");
         navigate("/admin/login");
     };
 

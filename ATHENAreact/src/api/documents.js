@@ -75,6 +75,20 @@ export const getExtractedQuestions = async (documentId) => {
 };
 
 /**
+ * Consultar o ejecutar la auditoría automática de calidad de un documento.
+ * @param {string} documentId - UUID del documento
+ */
+export const getDocumentAudit = async (documentId) => {
+    const response = await questionBankApi.get(`/admin/documents/${documentId}/audit`);
+    return response.data;
+};
+
+export const runDocumentAudit = async (documentId) => {
+    const response = await questionBankApi.post(`/admin/documents/${documentId}/audit`);
+    return response.data;
+};
+
+/**
  * Consultar listado paginado de preguntas reales del banco con filtros.
  * @param {Object} params - { status, subject_id, search, per_page, page }
  */
@@ -196,6 +210,36 @@ export const bulkApproveQuestions = async (questionIds) => {
     });
     return response.data;
 };
+
+/**
+ * Iniciar sesión administrativa segura.
+ * @param {string} email
+ * @param {string} password
+ */
+export const adminLogin = async (email, password) => {
+    const response = await questionBankApi.post('/admin/auth/login', { email, password });
+    return response.data;
+};
+
+/**
+ * Consultar el estado en tiempo real del orquestador asíncrono IQPE para un documento.
+ * @param {string} documentId - UUID del documento
+ */
+export const getIqpeStatus = async (documentId) => {
+    const response = await questionBankApi.get(`/admin/documents/${documentId}/iqpe-status`);
+    return response.data;
+};
+
+/**
+ * Reintentar o recuperar el procesamiento IQPE de un documento sin volver a subir el PDF.
+ * @param {string} documentId - UUID del documento
+ */
+export const retryDocumentProcessing = async (documentId) => {
+    const response = await questionBankApi.post(`/admin/documents/${documentId}/retry`);
+    return response.data;
+};
+
+
 
 
 

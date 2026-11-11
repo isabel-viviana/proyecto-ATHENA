@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessIqpeDocumentJob;
+use App\Models\IqpeDocumentJob;
+use App\Models\IqpeExecutionLog;
 use App\Models\SourceDocument;
 use App\Services\SupabaseStorageService;
 use Illuminate\Http\JsonResponse;
@@ -151,18 +154,47 @@ class DocumentController extends Controller
                 'status'         => 'uploaded',
             ]);
 
+            // 6. Creación y Despacho Asíncrono de Trabajo IQPE
+            $jobUuid = (string) Str::uuid();
+            $runNumber = 1;
+
+            $iqpeJob = IqpeDocumentJob::create([
+                'id'                 => $jobUuid,
+                'source_document_id' => $document->id,
+                'run_number'         => $runNumber,
+                'status'             => 'queued',
+                'config'             => [
+                    'auto_dispatched' => true,
+                    'original_name'   => $file->getClientOriginalName(),
+                    'size_bytes'      => $file->getSize(),
+                ],
+            ]);
+
+            IqpeExecutionLog::record(
+                $jobUuid,
+                'pdf_ingestion',
+                'info',
+                "Documento '{$document->title}' cargado exitosamente. Trabajo IQPE #{$runNumber} encolado para procesamiento asíncrono."
+            );
+
+            // Despachar Job a la cola en segundo plano
+            ProcessIqpeDocumentJob::dispatch($document->id, $jobUuid);
+
             return response()->json([
                 'success' => true,
-                'message' => 'Documento PDF subido y registrado exitosamente.',
+                'message' => 'Documento PDF subido exitosamente. Procesamiento IQPE encolado en segundo plano.',
                 'data' => [
                     'id'             => $document->id,
+                    'document_id'    => $document->id,
+                    'job_id'         => $jobUuid,
+                    'run_number'     => $runNumber,
                     'title'          => $document->title,
                     'storage_path'   => $document->storage_path,
                     'year'           => $document->year,
                     'exam_type'      => $document->exam_type,
                     'total_pages'    => $document->total_pages,
                     'has_answer_key' => $document->has_answer_key,
-                    'status'         => $document->status,
+                    'status'         => 'queued',
                     'created_at'     => $document->created_at?->toIso8601String(),
                     'file_metadata'  => [
                         'original_name' => $file->getClientOriginalName(),
