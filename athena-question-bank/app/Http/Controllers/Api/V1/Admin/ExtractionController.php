@@ -7,6 +7,7 @@ use App\Jobs\ProcessIqpeDocumentJob;
 use App\Models\IqpeDocumentJob;
 use App\Models\IqpeExecutionLog;
 use App\Models\IqpeQuestionResolution;
+use App\Models\IqpeVerification;
 use App\Models\Question;
 use App\Models\SourceDocument;
 use App\Services\GeminiQuestionExtractionService;
@@ -39,7 +40,7 @@ class ExtractionController extends Controller
 
         // Verificar si ya existe un trabajo activo
         $activeJob = IqpeDocumentJob::where('source_document_id', $id)
-            ->whereIn('status', ['queued', 'extracting', 'solving_round_1', 'solving_round_2', 'arbitrating', 'auditing'])
+            ->whereIn('status', ['queued', 'extracting', 'solving_round_1', 'solving_round_2', 'verifying', 'solving_round_3', 'arbitrating', 'auditing'])
             ->where(function ($q) {
                 $q->whereNull('started_at')
                   ->orWhere('started_at', '>=', now()->subMinutes(15));
@@ -155,6 +156,20 @@ class ExtractionController extends Controller
             ->where('round_number', 2)
             ->whereIn('status', ['success', 'uncertain'])
             ->count();
+        $r3Done = IqpeQuestionResolution::where('job_id', $latestJob->id)
+            ->where('round_number', 3)
+            ->whereIn('status', ['success', 'uncertain'])
+            ->count();
+
+        $verificationCounts = IqpeVerification::where('job_id', $latestJob->id)
+            ->selectRaw("verdict, count(*) as total")
+            ->groupBy('verdict')
+            ->pluck('total', 'verdict');
+
+        $verifiedCandidateCount = (int) ($verificationCounts['verified_candidate'] ?? 0);
+        $verifiedNoKeyCount = (int) ($verificationCounts['verified_candidate_no_official_key'] ?? 0);
+        $totalVerifications = (int) $verificationCounts->sum();
+        $requiresReviewCount = max(0, $totalVerifications - $verifiedCandidateCount - $verifiedNoKeyCount);
 
         // Derivar progreso real a partir del estado y etapa cronológica
         $progress = match ($latestJob->status) {
@@ -167,9 +182,11 @@ class ExtractionController extends Controller
             },
             'solving_round_1' => "Ejecutando Solver R1 independiente ({$r1Done}/{$totalTarget} preguntas resueltas)...",
             'solving_round_2' => "Ejecutando Solver R2 independiente ({$r2Done}/{$totalTarget} preguntas resueltas)...",
+            'verifying'       => "Verificando concordancia R1/R2 y claves oficiales ({$totalVerifications}/{$totalTarget})...",
+            'solving_round_3' => "Ejecutando Solver R3 independiente para preguntas sin clave oficial ({$r3Done} resueltas)...",
             'arbitrating'     => 'Ejecutando arbitraje y desempate pedagógico Ronda 3...',
             'auditing'        => 'Realizando auditoría de integridad y detección de reactivos duplicados...',
-            'completed'       => "Procesamiento completado exitosamente. {$latestJob->total_questions_detected} preguntas procesadas (R1: {$r1Done}, R2: {$r2Done}).",
+            'completed'       => "Procesamiento completado: {$verifiedCandidateCount} candidatas con clave, {$verifiedNoKeyCount} candidatas sin clave (R1=R2=R3), {$requiresReviewCount} para revisión administrativa.",
             'failed'          => 'Procesamiento fallido: ' . ($latestJob->error_log ?: 'Error no especificado.'),
             default           => ucfirst($latestJob->status),
         };
@@ -191,6 +208,13 @@ class ExtractionController extends Controller
                 'total_questions_detected' => $latestJob->total_questions_detected ?: $realQuestionsCount,
                 'r1_completed_count'       => $r1Done,
                 'r2_completed_count'       => $r2Done,
+                'r3_completed_count'       => $r3Done,
+                'verification_summary'     => [
+                    'total_verified_records'               => $totalVerifications,
+                    'verified_candidate_count'             => $verifiedCandidateCount,
+                    'verified_candidate_no_official_count' => $verifiedNoKeyCount,
+                    'requires_admin_review_count'          => $requiresReviewCount,
+                ],
                 'started_at'               => $latestJob->started_at?->toIso8601String(),
                 'completed_at'             => $latestJob->completed_at?->toIso8601String(),
                 'duration_seconds'         => $latestJob->duration_seconds,
@@ -219,7 +243,7 @@ class ExtractionController extends Controller
 
         // Prevenir reintento simultáneo si ya hay un trabajo activo
         $activeJob = IqpeDocumentJob::where('source_document_id', $id)
-            ->whereIn('status', ['queued', 'extracting', 'solving_round_1', 'solving_round_2', 'arbitrating', 'auditing'])
+            ->whereIn('status', ['queued', 'extracting', 'solving_round_1', 'solving_round_2', 'verifying', 'solving_round_3', 'arbitrating', 'auditing'])
             ->where(function ($q) {
                 $q->whereNull('started_at')
                   ->orWhere('started_at', '>=', now()->subMinutes(16));
@@ -337,9 +361,9 @@ class ExtractionController extends Controller
 
         IqpeExecutionLog::record(
             $latestJob->id,
-            'solver_r1',
+            'verification',
             'info',
-            "Reanudando resoluciones R1/R2 fallidas o pendientes sobre corrida #{$latestJob->run_number} (preservando resoluciones exitosas previas)."
+            "Reanudando resoluciones R1/R2/R3 y verificación pendientes sobre corrida #{$latestJob->run_number} (preservando rondas completadas previas)."
         );
 
         ProcessIqpeDocumentJob::dispatch($document->id, $latestJob->id, skipExtraction: true);

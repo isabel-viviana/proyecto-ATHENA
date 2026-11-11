@@ -82,6 +82,8 @@ class IqpeDocumentJob extends Model
             'extracting',
             'solving_round_1',
             'solving_round_2',
+            'verifying',
+            'solving_round_3',
             'arbitrating',
             'auditing',
         ], true);

@@ -8,6 +8,7 @@ use App\Models\Question;
 use App\Models\SourceDocument;
 use App\Services\GeminiQuestionExtractionService;
 use App\Services\GeminiQuestionSolverService;
+use App\Services\IqpeVerificationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -47,10 +48,14 @@ class ProcessIqpeDocumentJob implements ShouldQueue
      * 1. Extracción PDF -> borrador (se omite si ya fue extraído al reintentar resoluciones).
      * 2. Solver R1 independiente.
      * 3. Solver R2 independiente (contexto aislado).
+     * 4. Verificación inicial (detección de clave oficial vs ausencia de clave).
+     * 5. Solver R3 independiente (ÚNICAMENTE para preguntas sin clave oficial).
+     * 6. Comparación final y persistencia de verificaciones en iqpe_verifications.
      */
     public function handle(
         GeminiQuestionExtractionService $extractionService,
-        GeminiQuestionSolverService $solverService
+        GeminiQuestionSolverService $solverService,
+        IqpeVerificationService $verificationService
     ): void {
         @set_time_limit(0);
         Log::info("Iniciando ProcessIqpeDocumentJob para Documento: {$this->documentId}, Job: {$this->jobId}");
@@ -85,7 +90,7 @@ class ProcessIqpeDocumentJob implements ShouldQueue
         // 1. Prevención estricta de ejecuciones simultáneas duplicadas para el mismo documento
         $activeJob = IqpeDocumentJob::where('source_document_id', $this->documentId)
             ->where('id', '!=', $this->jobId)
-            ->whereIn('status', ['extracting', 'solving_round_1', 'solving_round_2', 'arbitrating', 'auditing'])
+            ->whereIn('status', ['extracting', 'solving_round_1', 'solving_round_2', 'verifying', 'solving_round_3', 'arbitrating', 'auditing'])
             ->where('started_at', '>=', now()->subMinutes(16))
             ->first();
 
@@ -273,44 +278,111 @@ class ProcessIqpeDocumentJob implements ShouldQueue
             );
 
             // =========================================================================
-            // ETAPA 4: EVALUACIÓN FINAL DEL BLOQUE 3 (SIN ARBITRAJE NI PUBLICACIÓN)
+            // ETAPA 4: VERIFICACIÓN INICIAL DE CLAVES OFICIALES (INTERNO EN LARAVEL)
             // =========================================================================
-            $duration = max(1, (int) (now()->timestamp - $startTime->timestamp));
-            $totalFailedResolutions = ($r1Stats['failed'] ?? 0) + ($r2Stats['failed'] ?? 0);
+            $r1r2Failed = ($r1Stats['failed'] ?? 0) + ($r2Stats['failed'] ?? 0);
+            if ($r1r2Failed > 0) {
+                $this->markPartialFailureAndMaybeRelease(
+                    $iqpeJob,
+                    $document,
+                    $startTime,
+                    'solver_r2',
+                    "Procesamiento parcial: {$r1r2Failed} resoluciones de R1/R2 presentaron errores técnicos de red/API. Las resoluciones exitosas fueron preservadas; reintente para completar únicamente las fallidas."
+                );
+                return;
+            }
 
-            if ($totalFailedResolutions > 0) {
-                $errMsg = "Procesamiento parcial: {$totalFailedResolutions} resoluciones presentaron errores técnicos de red/API. Las resoluciones exitosas fueron preservadas; reintente para completar únicamente las fallidas.";
+            $iqpeJob->update(['status' => 'verifying']);
 
-                $iqpeJob->update([
-                    'status'           => 'failed',
-                    'completed_at'     => now(),
-                    'duration_seconds' => $duration,
-                    'error_log'        => $errMsg,
-                ]);
+            // Consulta de clave oficial restringida exclusivamente al verificador interno en Laravel.
+            // Esta colección NUNCA se pasa a GeminiQuestionSolverService.
+            $questionsWithKeys = Question::select(['id', 'source_document_id', 'order_in_group', 'key_status'])
+                ->with([
+                    'options' => fn ($q) => $q->select([
+                        'id',
+                        'question_id',
+                        'option_letter',
+                        'is_correct',
+                    ])->orderBy('option_letter', 'asc'),
+                ])
+                ->where('source_document_id', $this->documentId)
+                ->orderBy('order_in_group', 'asc')
+                ->get();
 
-                // Conservar estado 'extracted' del documento para que el reintento no repita la extracción
-                if ($document->status !== 'extracted') {
-                    $document->update(['status' => 'extracted']);
-                }
+            $classification = $verificationService->classifyQuestionsForVerification($questionsWithKeys);
+            $scenarioACount = count($classification['scenario_a_ids']);
+            $scenarioBIds = $classification['scenario_b_ids'];
+            $scenarioBCount = count($scenarioBIds);
+
+            IqpeExecutionLog::record(
+                $this->jobId,
+                'verification',
+                'info',
+                "Clasificación de claves oficiales: {$scenarioACount} pregunta(s) con clave oficial/estado verificable (Escenario A, sin R3) y {$scenarioBCount} pregunta(s) sin clave oficial (Escenario B, requieren R3 independiente).",
+                ['scenario_a_count' => $scenarioACount, 'scenario_b_count' => $scenarioBCount]
+            );
+
+            // =========================================================================
+            // ETAPA 5: SOLVER R3 INDEPENDIENTE (ÚNICAMENTE PARA PREGUNTAS SIN CLAVE OFICIAL)
+            // =========================================================================
+            $r3Stats = [
+                'total'                   => 0,
+                'skipped'                 => 0,
+                'success'                 => 0,
+                'uncertain'               => 0,
+                'failed'                  => 0,
+                'total_prompt_tokens'     => 0,
+                'total_completion_tokens' => 0,
+            ];
+
+            if ($scenarioBCount > 0) {
+                $iqpeJob->update(['status' => 'solving_round_3']);
+
+                // Se reutiliza la colección sanitizada ($questions), libre de is_correct, key_status y R1/R2
+                $r3SanitizedQuestions = $questions->whereIn('id', $scenarioBIds)->values();
 
                 IqpeExecutionLog::record(
                     $this->jobId,
-                    'solver_r2',
-                    'error',
-                    $errMsg
+                    'solver_r3',
+                    'info',
+                    "Iniciando Solver R3 independiente para {$scenarioBCount} pregunta(s) sin clave oficial (modelo: {$solverModel} | aislamiento estricto)..."
                 );
 
-                if ($this->attempts() < $this->tries) {
-                    IqpeExecutionLog::record(
-                        $this->jobId,
-                        'solver_r1',
-                        'warning',
-                        "Programando reintento automático de resoluciones fallidas en {$this->backoff} segundos..."
-                    );
-                    $this->release($this->backoff);
-                }
+                $r3Stats = $solverService->solveBatchForJob($iqpeJob, $r3SanitizedQuestions, roundNumber: 3);
+
+                IqpeExecutionLog::record(
+                    $this->jobId,
+                    'solver_r3',
+                    $r3Stats['failed'] > 0 ? 'warning' : 'info',
+                    "Solver R3 finalizado: {$r3Stats['success']} resueltas, {$r3Stats['uncertain']} inciertas, {$r3Stats['failed']} fallidas (omitidas previas: {$r3Stats['skipped']}). Tokens P/C: {$r3Stats['total_prompt_tokens']}/{$r3Stats['total_completion_tokens']}.",
+                    $r3Stats
+                );
+            }
+
+            // =========================================================================
+            // ETAPA 6: COMPARACIÓN FINAL Y CLASIFICACIÓN EN iqpe_verifications
+            // =========================================================================
+            $iqpeJob->update(['status' => 'verifying']);
+            $verifyStats = $verificationService->verifyJobQuestions($iqpeJob, $questionsWithKeys, persistFailed: false);
+
+            $r3Failed = (int) ($r3Stats['failed'] ?? 0);
+            $pendingVerification = (int) ($verifyStats['pending_or_failed'] ?? 0);
+
+            if ($r3Failed > 0 || $pendingVerification > 0) {
+                $this->markPartialFailureAndMaybeRelease(
+                    $iqpeJob,
+                    $document,
+                    $startTime,
+                    'solver_r3',
+                    "Verificación incompleta: {$r3Failed} resolución(es) R3 fallaron y {$pendingVerification} pregunta(s) permanecen pendientes de verificación. R1 y R2 completadas fueron preservadas; reintente para recuperar únicamente lo pendiente."
+                );
                 return;
             }
+
+            // =========================================================================
+            // ETAPA 7: CIERRE DE TRABAJO (SIN APROBACIÓN NI PUBLICACIÓN AUTOMÁTICA)
+            // =========================================================================
+            $duration = max(1, (int) (now()->timestamp - $startTime->timestamp));
 
             $iqpeJob->update([
                 'status'                   => 'completed',
@@ -324,7 +396,8 @@ class ProcessIqpeDocumentJob implements ShouldQueue
                 $this->jobId,
                 'completed',
                 'info',
-                "Trabajo IQPE #{$iqpeJob->run_number} completado en {$duration}s. {$totalQuestions} preguntas con R1 y R2 independientes listos para verificación pedagógica."
+                "Trabajo IQPE #{$iqpeJob->run_number} completado en {$duration}s. Verificación: {$verifyStats['verified_candidate']} candidatas con clave, {$verifyStats['verified_candidate_no_official_key']} candidatas sin clave (R1=R2=R3), {$verifyStats['requires_admin_review']} en revisión administrativa.",
+                $verifyStats
             );
 
         } catch (Throwable $e) {
@@ -405,6 +478,43 @@ class ProcessIqpeDocumentJob implements ShouldQueue
             }
         } catch (Throwable) {
             // Ignorar errores secundarios
+        }
+    }
+
+    /**
+     * Marca el trabajo como fallido conservando las resoluciones y verificaciones ya completadas
+     * y manteniendo el documento en 'extracted' para reanudar sin re-extraer.
+     */
+    protected function markPartialFailureAndMaybeRelease(
+        IqpeDocumentJob $iqpeJob,
+        SourceDocument $document,
+        \Carbon\CarbonInterface $startTime,
+        string $stage,
+        string $errMsg
+    ): void {
+        $duration = max(1, (int) (now()->timestamp - $startTime->timestamp));
+
+        $iqpeJob->update([
+            'status'           => 'failed',
+            'completed_at'     => now(),
+            'duration_seconds' => $duration,
+            'error_log'        => $errMsg,
+        ]);
+
+        if ($document->status !== 'extracted') {
+            $document->update(['status' => 'extracted']);
+        }
+
+        IqpeExecutionLog::record($this->jobId, $stage, 'error', $errMsg);
+
+        if ($this->attempts() < $this->tries) {
+            IqpeExecutionLog::record(
+                $this->jobId,
+                $stage,
+                'warning',
+                "Programando reintento automático de resoluciones fallidas en {$this->backoff} segundos..."
+            );
+            $this->release($this->backoff);
         }
     }
 }

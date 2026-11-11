@@ -48,13 +48,13 @@ class GeminiQuestionSolverService
     }
 
     /**
-     * Ejecuta un lote de resoluciones independientes (R1 o R2) controlando concurrencia,
+     * Ejecuta un lote de resoluciones independientes (R1, R2 o R3) controlando concurrencia,
      * límites de tasa de Gemini y reintentos con backoff exponencial.
      *
      * @param IqpeDocumentJob $job
      * @param Collection<int, Question> $questions
-     * @param int $roundNumber 1 (R1) o 2 (R2)
-     * @param int $concurrency Máximo de llamadas simultáneas en Http::pool
+     * @param int $roundNumber 1 (R1), 2 (R2) o 3 (R3)
+     * @param int|null $concurrency Máximo de llamadas simultáneas en Http::pool
      * @return array{total:int, skipped:int, success:int, uncertain:int, failed:int, total_prompt_tokens:int, total_completion_tokens:int}
      */
     public function solveBatchForJob(
@@ -63,8 +63,8 @@ class GeminiQuestionSolverService
         int $roundNumber,
         ?int $concurrency = null
     ): array {
-        if (! in_array($roundNumber, [1, 2], true)) {
-            throw new RuntimeException("Ronda de resolución no válida para Bloque 3: {$roundNumber}. Solo se permite R1 (1) o R2 (2).");
+        if (! in_array($roundNumber, [1, 2, 3], true)) {
+            throw new RuntimeException("Ronda de resolución no válida: {$roundNumber}. Solo se permite R1 (1), R2 (2) o R3 (3).");
         }
 
         $effectiveConcurrency = max(1, $concurrency ?? (int) config('services.gemini.solver_concurrency', 1));
@@ -210,15 +210,15 @@ class GeminiQuestionSolverService
     }
 
     /**
-     * Resuelve de manera aislada una única pregunta para la ronda indicada (R1 o R2).
+     * Resuelve de manera aislada una única pregunta para la ronda indicada (R1, R2 o R3).
      */
     public function solveSingleQuestionRound(
         string $jobId,
         Question $question,
         int $roundNumber
     ): IqpeQuestionResolution {
-        if (! in_array($roundNumber, [1, 2], true)) {
-            throw new RuntimeException("Ronda de resolución no válida para Bloque 3: {$roundNumber}.");
+        if (! in_array($roundNumber, [1, 2, 3], true)) {
+            throw new RuntimeException("Ronda de resolución no válida: {$roundNumber}. Solo se permite R1 (1), R2 (2) o R3 (3).");
         }
 
         $existing = IqpeQuestionResolution::where('job_id', $jobId)
@@ -602,14 +602,18 @@ class GeminiQuestionSolverService
             ],
             'generationConfig' => [
                 'responseMimeType' => 'application/json',
-                'temperature'      => $roundNumber === 1 ? 0.1 : 0.2,
+                'temperature'      => match ($roundNumber) {
+                    1 => 0.1,
+                    2 => 0.2,
+                    default => 0.15,
+                },
                 'maxOutputTokens'  => 4096,
             ],
         ];
     }
 
     /**
-     * Retorna el prompt de sistema específico e independiente para cada ronda (R1 o R2).
+     * Retorna el prompt de sistema específico e independiente para cada ronda (R1, R2 o R3).
      * NINGUNA ronda recibe referencia, pista ni confirmación sobre otras ejecuciones.
      */
     public function getSystemPromptForRound(int $roundNumber): string
@@ -636,7 +640,8 @@ Nota: confidence_score es un valor decimal orientativo entre 0.000 y 1.000 (o nu
 PROMPT;
         }
 
-        return <<<'PROMPT'
+        if ($roundNumber === 2) {
+            return <<<'PROMPT'
 Eres un especialista disciplinar en evaluación por competencias ICFES Saber 11.
 Debes resolver de forma completamente autónoma la siguiente pregunta de examen aplicando razonamiento analítico y verificación por descarte sobre cada una de las cuatro opciones A, B, C y D.
 
@@ -651,6 +656,27 @@ REGLAS ESTRICTAS:
   "solved_option_letter": "A" | "B" | "C" | "D" | null,
   "solution_explanation": "Explicación pedagógica breve, verificable y paso a paso de la solución y descarte (o motivo por el cual no puede resolverse).",
   "visual_interpretation": "Descripción analítica directa de los elementos visuales observados (o null si no hay recursos visuales).",
+  "confidence_score": 0.00
+}
+Nota: confidence_score es un valor decimal orientativo entre 0.000 y 1.000 (o null si status es uncertain).
+PROMPT;
+        }
+
+        return <<<'PROMPT'
+Eres un docente titular experto en diseño y validación conceptual de ítems para pruebas estandarizadas ICFES Saber 11.
+Resuelve desde cero y de manera estrictamente individual la siguiente pregunta de selección múltiple, justificando tu deducción a partir de la evidencia del ítem.
+
+REGLAS ESTRICTAS:
+1. Utiliza únicamente el enunciado, el estímulo compartido, los recursos visuales adjuntos y las opciones A, B, C y D incluidas en esta petición.
+2. Si hay imágenes, diagramas, tablas o gráficas adjuntas, obsérvalas directamente y fundamenta la respuesta únicamente en los datos verificables.
+3. No completes información ausente ni supongas datos no mostrados en el material original.
+4. Si el ítem es ambiguo, le faltan datos o algún recurso visual requerido no permite lectura segura, responde obligatoriamente con "status": "uncertain" y "solved_option_letter": null.
+5. Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:
+{
+  "status": "success" | "uncertain",
+  "solved_option_letter": "A" | "B" | "C" | "D" | null,
+  "solution_explanation": "Explicación pedagógica breve, clara y verificable del criterio que sustenta la respuesta elegida (o el motivo de incertidumbre).",
+  "visual_interpretation": "Lectura directa de los elementos gráficos observados (o null si no hay recursos visuales).",
   "confidence_score": 0.00
 }
 Nota: confidence_score es un valor decimal orientativo entre 0.000 y 1.000 (o null si status es uncertain).

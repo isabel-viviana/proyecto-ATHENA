@@ -866,7 +866,7 @@ const Questions = () => {
                 setExtractionStatusData(statusPayload);
                 setIqpeJobData(statusPayload);
 
-                if (["queued", "extracting", "solving_round_1", "solving_round_2"].includes(statusPayload?.status)) {
+                if (["queued", "extracting", "solving_round_1", "solving_round_2", "verifying", "solving_round_3"].includes(statusPayload?.status)) {
                     setIsExtracting(true);
                 } else if (statusPayload?.status === "completed" || statusPayload?.status === "failed") {
                     setIsExtracting(false);
@@ -2379,7 +2379,7 @@ const Questions = () => {
                                                         ? "qst-doc-badge--extracted"
                                                         : (iqpeJobData?.status || extractionStatusData?.status || selectedExtractionDocObj?.status) === "uploaded" || (iqpeJobData?.status === "queued")
                                                         ? "qst-doc-badge--uploaded"
-                                                        : ["extracting", "solving_round_1", "solving_round_2", "processing"].includes(iqpeJobData?.status || extractionStatusData?.status || selectedExtractionDocObj?.status)
+                                                        : ["extracting", "solving_round_1", "solving_round_2", "verifying", "solving_round_3", "processing"].includes(iqpeJobData?.status || extractionStatusData?.status || selectedExtractionDocObj?.status)
                                                         ? "qst-doc-badge--processing"
                                                         : "qst-doc-badge--failed"
                                                 }`}
