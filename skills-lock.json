@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "wompi": {
+      "source": "NoxAI-co/wompi-skills",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "1183d8157d93dec3cc1475e48879bd6d384d339550bb844fdc6614fb73c5a2f3"
+    }
+  }
+}

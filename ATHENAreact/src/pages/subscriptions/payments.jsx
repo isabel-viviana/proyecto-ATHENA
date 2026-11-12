@@ -1,63 +1,82 @@
 import "./payments.css";
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import useAuthStore from "../../stores/useAuthStore";
+import { SUBSCRIPTION_PLANS } from "../../services/wompiService";
+import WompiCheckoutModal from "../../components/wompi/WompiCheckoutModal";
 
 const Payments = () => {
+    const user = useAuthStore((state) => state.user);
+    const navigate = useNavigate();
+    const [selectedPlan, setSelectedPlan] = useState(SUBSCRIPTION_PLANS[0]);
+    const [isWompiOpen, setIsWompiOpen] = useState(false);
+
     return (
         <>
             <div className="checkout-wrapper">
-                <Link to="/subscriptions">← Volver a planes</Link>
+                <Link to="/subscriptions">← Volver a Mi Suscripción</Link>
 
-                <h1 className="checkout-title">Resumen de Compra</h1>
+                <h1 className="checkout-title">Resumen de Compra (Wompi / Nequi)</h1>
 
                 <div className="checkout-grid">
-                    {/*  PAYMENT  */}
+                    {/*  PLAN SELECTION & PAYMENT  */}
                     <section className="payment-card">
                         <div className="payment-card__header">
-                            <i className="far fa-credit-card"></i>
-                            <h2>Método de Pago</h2>
+                            <i className="fas fa-wallet"></i>
+                            <h2>Selecciona tu Plan ATHENA Premium</h2>
                         </div>
 
-                        <form className="payment-form">
-                            <div className="form-group">
-                                <label>NÚMERO DE TARJETA</label>
-
-                                <div className="input-icon">
-                                    <i className="far fa-credit-card"></i>
-
-                                    <input
-                                        type="text"
-                                        placeholder="0000 0000 0000 0000"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>VENCIMIENTO</label>
-
-                                    <input type="text" placeholder="MM/YY" />
-                                </div>
-
-                                <div className="form-group">
-                                    <label>CVC</label>
-
-                                    <input type="text" placeholder="123" />
-                                </div>
-                            </div>
-
-                            <div className="form-group">
-                                <label>NOMBRE EN LA TARJETA</label>
-
-                                <input
-                                    type="text"
-                                    placeholder="Como aparece en la tarjeta"
-                                />
-                            </div>
-                        </form>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
+                            {SUBSCRIPTION_PLANS.map((plan) => {
+                                const isSelected = selectedPlan.id === plan.id;
+                                return (
+                                    <div
+                                        key={plan.id}
+                                        onClick={() => setSelectedPlan(plan)}
+                                        style={{
+                                            padding: "16px",
+                                            borderRadius: "12px",
+                                            border: isSelected
+                                                ? "2px solid #6366f1"
+                                                : "1px solid rgba(148, 163, 184, 0.2)",
+                                            background: isSelected
+                                                ? "rgba(99, 102, 241, 0.12)"
+                                                : "rgba(15, 23, 42, 0.5)",
+                                            cursor: "pointer",
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            alignItems: "center",
+                                        }}
+                                    >
+                                        <div>
+                                            <strong style={{ color: "#f8fafc", fontSize: "16px" }}>
+                                                {plan.name}{" "}
+                                                {plan.badge && (
+                                                    <span style={{ fontSize: "12px", color: "#38bdf8", marginLeft: "6px" }}>
+                                                        {plan.badge}
+                                                    </span>
+                                                )}
+                                            </strong>
+                                            <p style={{ color: "#94a3b8", fontSize: "13px", marginTop: "4px" }}>
+                                                {plan.description}
+                                            </p>
+                                        </div>
+                                        <div style={{ textAlign: "right", minWidth: "110px" }}>
+                                            <strong style={{ color: "#34d399", fontSize: "16px" }}>
+                                                {plan.formattedPrice}
+                                            </strong>
+                                            <span style={{ display: "block", fontSize: "11px", color: "#94a3b8" }}>
+                                                {plan.billingText}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
 
                         <div className="payment-secure">
                             <i className="fas fa-shield-alt"></i>
-                            Pago 100% seguro y encriptado
+                            Pago 100% seguro procesado por Wompi Bancolombia (Nequi / Tarjetas / PSE)
                         </div>
                     </section>
 
@@ -69,11 +88,11 @@ const Payments = () => {
 
                         <div className="summary-item">
                             <div>
-                                <h4>ATHENA Premium</h4>
-                                <span>(1 Mes)</span>
+                                <h4>{selectedPlan.name}</h4>
+                                <span>({selectedPlan.duration_days} días)</span>
                             </div>
 
-                            <p>$49.900</p>
+                            <p>{selectedPlan.formattedPrice}</p>
                         </div>
 
                         <div className="summary-item summary-item--muted">
@@ -85,13 +104,27 @@ const Payments = () => {
 
                         <div className="summary-total">
                             <span>Total</span>
-                            <h3>$49.900</h3>
+                            <h3>{selectedPlan.formattedPrice}</h3>
                         </div>
 
-                        <button className="pay-button">Pagar $49.900</button>
+                        <button
+                            type="button"
+                            className="pay-button"
+                            onClick={() => setIsWompiOpen(true)}
+                        >
+                            Pagar {selectedPlan.formattedPrice} con Wompi
+                        </button>
                     </aside>
                 </div>
             </div>
+
+            <WompiCheckoutModal
+                plan={selectedPlan}
+                user={user}
+                isOpen={isWompiOpen}
+                onClose={() => setIsWompiOpen(false)}
+                onSuccess={() => navigate("/subscriptions")}
+            />
         </>
     );
 };

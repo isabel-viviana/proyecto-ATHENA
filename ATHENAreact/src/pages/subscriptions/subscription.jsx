@@ -1,7 +1,35 @@
 import "./subscription.css";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import useAuthStore from "../../stores/useAuthStore";
+import {
+    SUBSCRIPTION_PLANS,
+    getActiveSubscription,
+    getPaymentHistory,
+} from "../../services/wompiService";
+import WompiCheckoutModal from "../../components/wompi/WompiCheckoutModal";
 
 const Subscription = () => {
+    const user = useAuthStore((state) => state.user);
+    const [activeSub, setActiveSub] = useState(() => getActiveSubscription());
+    const [history, setHistory] = useState(() => getPaymentHistory());
+    const [selectedPlan, setSelectedPlan] = useState(SUBSCRIPTION_PLANS[0]);
+    const [isWompiOpen, setIsWompiOpen] = useState(false);
+
+    useEffect(() => {
+        const refresh = () => {
+            setActiveSub(getActiveSubscription());
+            setHistory(getPaymentHistory());
+        };
+        window.addEventListener("athena_subscription_updated", refresh);
+        return () => window.removeEventListener("athena_subscription_updated", refresh);
+    }, []);
+
+    const handleOpenWompi = (plan) => {
+        setSelectedPlan(plan || SUBSCRIPTION_PLANS[0]);
+        setIsWompiOpen(true);
+    };
+
     return (
         <>
             <div className="main__content">
@@ -10,7 +38,7 @@ const Subscription = () => {
                     <div className="page-header__info">
                         <h1>Mi Suscripción</h1>
                         <p>
-                            Administra tu plan y revisa tu historial de pagos.
+                            Administra tu plan y revisa tu historial de pagos con Wompi / Nequi.
                         </p>
                     </div>
                 </section>
@@ -22,34 +50,38 @@ const Subscription = () => {
                             <div className="subscription-card__badges">
                                 <span className="plan-badge">
                                     <i className="fas fa-crown"></i>
-                                    PLAN PREMIUM
+                                    {(activeSub?.planName || "PLAN PREMIUM").toUpperCase()}
                                 </span>
 
                                 <span className="status-badge">
                                     <i className="fas fa-circle"></i>
-                                    Activo
+                                    {activeSub?.status === "active" ? "Activo" : "Inactivo"}
                                 </span>
                             </div>
 
-                            <h2>Facturación mensual</h2>
+                            <h2>Facturación {activeSub?.period?.toLowerCase() || "mensual"}</h2>
 
                             <p>
-                                Próximo cobro:
-                                <span>15 de Mayo, 2026</span>
-                                ($49.900)
+                                Próximo cobro:{" "}
+                                <span>{activeSub?.formattedEndDate || "15 de Mayo, 2026"}</span>{" "}
+                                ({activeSub?.formattedPrice || "$29.900 COP"})
                             </p>
                         </div>
 
                         <div className="subscription-card__actions">
+                            <button
+                                type="button"
+                                className="btn btn--primary"
+                                onClick={() => handleOpenWompi(SUBSCRIPTION_PLANS.find((p) => p.id === activeSub?.planId) || SUBSCRIPTION_PLANS[0])}
+                            >
+                                Pagar con Wompi / Nequi
+                            </button>
+
                             <Link to="/payments">
-                                <button className="btn btn--primary">
-                                    Actualizar Pago
+                                <button className="btn btn--secondary" type="button">
+                                    Cambiar Plan
                                 </button>
                             </Link>
-
-                            <button className="btn btn--secondary">
-                                Cancelar
-                            </button>
                         </div>
                     </div>
 
@@ -59,7 +91,7 @@ const Subscription = () => {
                                 Plan Actual
                             </span>
 
-                            <h3>Premium</h3>
+                            <h3>{activeSub?.planName || "Premium Mensual"}</h3>
                         </div>
 
                         <div className="subscription-stat">
@@ -67,7 +99,7 @@ const Subscription = () => {
                                 Renovación
                             </span>
 
-                            <h3>15 Mayo</h3>
+                            <h3>{activeSub?.formattedEndDate || "15 Mayo"}</h3>
                         </div>
 
                         <div className="subscription-stat">
@@ -75,7 +107,7 @@ const Subscription = () => {
                                 Método
                             </span>
 
-                            <h3>Visa •••• 4242</h3>
+                            <h3>{activeSub?.paymentMethod || "Nequi (Wompi Sandbox)"}</h3>
                         </div>
                     </div>
                 </section>
@@ -84,67 +116,41 @@ const Subscription = () => {
                 <section className="history-card">
                     <div className="history-card__header">
                         <h2>Historial de Pagos</h2>
-                        <span>Últimos movimientos</span>
+                        <span>Últimos movimientos (Wompi)</span>
                     </div>
 
-                    <div className="payment-item">
-                        <div className="payment-item__left">
-                            <div className="payment-icon">
-                                <i className="fas fa-receipt"></i>
+                    {history.map((item) => (
+                        <div className="payment-item" key={item.id}>
+                            <div className="payment-item__left">
+                                <div className="payment-icon">
+                                    <i className="fas fa-receipt"></i>
+                                </div>
+
+                                <div className="payment-info">
+                                    <h3>{item.date}</h3>
+                                    <p>
+                                        {item.planName} • {item.method} (Ref: {item.reference})
+                                    </p>
+                                </div>
                             </div>
 
-                            <div className="payment-info">
-                                <h3>15 Abril 2026</h3>
-                                <p>Visa •••• 4242</p>
+                            <div className="payment-item__right">
+                                <h4>{item.formattedAmount}</h4>
+
+                                <span className="payment-status">{item.status}</span>
                             </div>
                         </div>
-
-                        <div className="payment-item__right">
-                            <h4>$49.900</h4>
-
-                            <span className="payment-status">Factura</span>
-                        </div>
-                    </div>
-
-                    <div className="payment-item">
-                        <div className="payment-item__left">
-                            <div className="payment-icon">
-                                <i className="fas fa-receipt"></i>
-                            </div>
-
-                            <div className="payment-info">
-                                <h3>15 Marzo 2026</h3>
-                                <p>Visa •••• 4242</p>
-                            </div>
-                        </div>
-
-                        <div className="payment-item__right">
-                            <h4>$49.900</h4>
-
-                            <span className="payment-status">Factura</span>
-                        </div>
-                    </div>
-
-                    <div className="payment-item">
-                        <div className="payment-item__left">
-                            <div className="payment-icon">
-                                <i className="fas fa-receipt"></i>
-                            </div>
-
-                            <div className="payment-info">
-                                <h3>15 Febrero 2026</h3>
-                                <p>Visa •••• 4242</p>
-                            </div>
-                        </div>
-
-                        <div className="payment-item__right">
-                            <h4>$49.900</h4>
-
-                            <span className="payment-status">Factura</span>
-                        </div>
-                    </div>
+                    ))}
                 </section>
             </div>
+
+            <WompiCheckoutModal
+                plan={selectedPlan}
+                user={user}
+                isOpen={isWompiOpen}
+                onClose={() => setIsWompiOpen(false)}
+                onSuccess={(sub) => setActiveSub(sub)}
+            />
         </>
     );
 };
