@@ -140,6 +140,7 @@ function App() {
                     <Route path="/notifications" element={<Navigate to="/profile/notifications" replace />} />
                     <Route path="/analysis" element={<Analysis />} />
                     <Route path="/store" element={<Store />} />
+                    <Route path="/suscripciones" element={<Subscriptions />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/payments" element={<Payments />} />
                 </Route>

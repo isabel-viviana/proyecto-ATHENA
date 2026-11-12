@@ -91,6 +91,14 @@ const Sidebar = () => {
                 </Link>
 
                 <Link
+                    to="/suscripciones"
+                    className={`sidebar__link ${isActive("/suscripciones") || isActive("/subscriptions") || isActive("/payments")}`}
+                >
+                    <i className="fas fa-crown"></i>
+                    <span>Suscripciones</span>
+                </Link>
+
+                <Link
                     to="/profile"
                     className={`sidebar__link ${isActive("/profile", true)}`}
                 >
