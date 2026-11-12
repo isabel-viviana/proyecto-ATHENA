@@ -75,6 +75,20 @@ export const getExtractedQuestions = async (documentId) => {
 };
 
 /**
+ * Consultar o ejecutar la auditoría automática de calidad de un documento.
+ * @param {string} documentId - UUID del documento
+ */
+export const getDocumentAudit = async (documentId) => {
+    const response = await questionBankApi.get(`/admin/documents/${documentId}/audit`);
+    return response.data;
+};
+
+export const runDocumentAudit = async (documentId) => {
+    const response = await questionBankApi.post(`/admin/documents/${documentId}/audit`);
+    return response.data;
+};
+
+/**
  * Consultar listado paginado de preguntas reales del banco con filtros.
  * @param {Object} params - { status, subject_id, search, per_page, page }
  */
@@ -103,20 +117,61 @@ export const updateQuestion = async (questionId, payload) => {
 };
 
 /**
- * Aprobar pedagógicamente una pregunta validada para el banco oficial.
+ * Aprobar administrativamente una pregunta validada (pasa a estado 'review', sin publicar).
  * @param {string} questionId - UUID de la pregunta
+ * @param {Object} [payload] - { notes, acknowledge_warnings }
  */
-export const approveQuestion = async (questionId) => {
-    const response = await questionBankApi.post(`/admin/questions/${questionId}/approve`);
+export const approveQuestion = async (questionId, payload = {}) => {
+    const response = await questionBankApi.post(`/admin/questions/${questionId}/approve`, payload);
     return response.data;
 };
 
 /**
- * Rechazar y archivar un reactivo extraído sin alterar estímulos asociados.
+ * Rechazar y archivar un reactivo con motivo obligatorio sin alterar estímulos asociados.
+ * @param {string} questionId - UUID de la pregunta
+ * @param {Object|string} payload - { reason, notes } o string con motivo
+ */
+export const rejectQuestion = async (questionId, payload) => {
+    const body = typeof payload === 'string' ? { reason: payload } : payload;
+    const response = await questionBankApi.post(`/admin/questions/${questionId}/reject`, body);
+    return response.data;
+};
+
+/**
+ * Devolver una pregunta aprobada o rechazada a revisión/corrección conservando su historial.
+ * @param {string} questionId - UUID de la pregunta
+ * @param {Object} payload - { reason, notes }
+ */
+export const returnQuestionToReview = async (questionId, payload) => {
+    const response = await questionBankApi.post(`/admin/questions/${questionId}/return-to-review`, payload);
+    return response.data;
+};
+
+/**
+ * Publicar explícitamente una pregunta previamente aprobada para consumo de estudiantes.
+ * @param {string} questionId - UUID de la pregunta
+ * @param {Object} [payload] - { notes, confirm_duplicate_publish }
+ */
+export const publishQuestion = async (questionId, payload = {}) => {
+    const response = await questionBankApi.post(`/admin/questions/${questionId}/publish`, payload);
+    return response.data;
+};
+
+/**
+ * Consultar la bandeja unificada de revisión IQPE con filtros especializados y conteos.
+ * @param {Object} params - { filter, subject_id, source_document_id, search, page, per_page }
+ */
+export const getIqpeReviewQueue = async (params = {}) => {
+    const response = await questionBankApi.get('/admin/iqpe/review-queue', { params });
+    return response.data;
+};
+
+/**
+ * Consultar el detalle completo de revisión IQPE de una pregunta (R1/R2/R3, clave oficial, verificación, auditoría, duplicados y decisiones).
  * @param {string} questionId - UUID de la pregunta
  */
-export const rejectQuestion = async (questionId) => {
-    const response = await questionBankApi.post(`/admin/questions/${questionId}/reject`);
+export const getQuestionIqpeDetail = async (questionId) => {
+    const response = await questionBankApi.get(`/admin/questions/${questionId}/iqpe-detail`);
     return response.data;
 };
 
@@ -150,13 +205,100 @@ export const getMediaUrl = (path) => {
 };
 
 /**
- * Manifiesto de recursos visuales extraídos de un documento (incluye los pendientes de asociación).
+ * Recursos visuales de un documento registrados en media_assets (incluye pendientes, confirmados y destinos disponibles).
  * @param {string} documentId - UUID del documento
  */
 export const getDocumentMedia = async (documentId) => {
     const response = await questionBankApi.get(`/admin/documents/${documentId}/media`);
     return response.data;
 };
+
+/**
+ * Listar recursos visuales registrados en media_assets con filtros opcionales.
+ * @param {Object} [params] - { source_document_id, association_status }
+ */
+export const getMediaAssets = async (params = {}) => {
+    const response = await questionBankApi.get('/admin/media-assets', { params });
+    return response.data;
+};
+
+/**
+ * Confirmar la asociación de un recurso visual a un estímulo o pregunta del mismo documento.
+ * @param {string} assetId - UUID del media_asset
+ * @param {Object} payload - { target_type: 'stimulus'|'question', target_id: string }
+ */
+export const associateMediaAsset = async (assetId, payload) => {
+    const response = await questionBankApi.post(`/admin/media-assets/${assetId}/associate`, payload);
+    return response.data;
+};
+
+/**
+ * Desasociar de forma controlada un recurso visual, devolviéndolo a estado 'pending'.
+ * @param {string} assetId - UUID del media_asset
+ */
+export const disassociateMediaAsset = async (assetId) => {
+    const response = await questionBankApi.post(`/admin/media-assets/${assetId}/disassociate`);
+    return response.data;
+};
+
+/**
+ * Aprobar pedagógicamente de forma masiva un conjunto de preguntas seleccionadas.
+ * @param {string[]} questionIds - Lista de UUIDs de las preguntas a aprobar
+ */
+export const bulkApproveQuestions = async (questionIds) => {
+    const response = await questionBankApi.post('/admin/questions/bulk-approve', {
+        question_ids: questionIds,
+    });
+    return response.data;
+};
+
+/**
+ * Iniciar sesión administrativa segura.
+ * @param {string} email
+ * @param {string} password
+ */
+export const adminLogin = async (email, password) => {
+    const response = await questionBankApi.post('/admin/auth/login', { email, password });
+    return response.data;
+};
+
+/**
+ * Consultar el estado en tiempo real del orquestador asíncrono IQPE para un documento.
+ * @param {string} documentId - UUID del documento
+ */
+export const getIqpeStatus = async (documentId) => {
+    const response = await questionBankApi.get(`/admin/documents/${documentId}/iqpe-status`);
+    return response.data;
+};
+
+/**
+ * Reintentar o recuperar el procesamiento IQPE de un documento sin volver a subir el PDF.
+ * @param {string} documentId - UUID del documento
+ */
+export const retryDocumentProcessing = async (documentId) => {
+    const response = await questionBankApi.post(`/admin/documents/${documentId}/retry`);
+    return response.data;
+};
+
+/**
+ * Reanudar únicamente las resoluciones R1/R2/R3 y verificación pendientes sin repetir extracción.
+ * @param {string} documentId - UUID del documento
+ */
+export const retryDocumentResolutions = async (documentId) => {
+    const response = await questionBankApi.post(`/admin/documents/${documentId}/retry-resolutions`);
+    return response.data;
+};
+
+/**
+ * Verificar sesión administrativa actual en el backend.
+ */
+export const getAdminMe = async () => {
+    const response = await questionBankApi.get('/admin/auth/me');
+    return response.data;
+};
+
+
+
 
 
 

@@ -43,6 +43,8 @@ services:
       MONGODB_URI: mongodb://127.0.0.1:27017
       MONGODB_DATABASE: athena_ai
       FIREBASE_PROJECT_ID: athena-595d2
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
     volumes:
       - athena-app-key:/var/run/secrets/app-key
     networks:
@@ -59,6 +61,8 @@ services:
     restart: unless-stopped
     ports:
       - "8001:8000"
+    env_file:
+      - ./athena-question-bank/.env
     environment:
       APP_NAME: ATHENA-Question-Bank
       APP_ENV: local
@@ -71,9 +75,9 @@ services:
       CACHE_STORE: file
       QUEUE_CONNECTION: sync
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
       QB_DB_HOST: ${QB_DB_HOST:-}
-      QB_DB_PORT: ${QB_DB_PORT:-5432}
+      QB_DB_PORT: ${QB_DB_PORT:-6543}
       QB_DB_DATABASE: ${QB_DB_DATABASE:-postgres}
       QB_DB_USERNAME: ${QB_DB_USERNAME:-}
       QB_DB_PASSWORD: ${QB_DB_PASSWORD:-}

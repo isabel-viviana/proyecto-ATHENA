@@ -92,5 +92,25 @@ class SourceDocument extends Model
             }
         });
     }
+
+    public function iqpeJobs()
+    {
+        return $this->hasMany(IqpeDocumentJob::class, 'source_document_id')->orderBy('run_number', 'desc');
+    }
+
+    public function latestIqpeJob()
+    {
+        return $this->hasOne(IqpeDocumentJob::class, 'source_document_id')->latestOfMany('run_number');
+    }
+
+    public function questions()
+    {
+        return $this->hasMany(Question::class, 'source_document_id');
+    }
+
+    public function stimuli()
+    {
+        return $this->hasMany(Stimulus::class, 'source_document_id');
+    }
 }
 

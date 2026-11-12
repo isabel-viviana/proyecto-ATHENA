@@ -30,6 +30,10 @@ class Question extends Model
         'order_in_group',
         'statement',
         'question_image_path',
+        'source_page',
+        'visual_transcription',
+        'visual_description',
+        'extraction_warnings',
         'difficulty',
         'explanation',
         'key_status',
@@ -39,13 +43,14 @@ class Question extends Model
     ];
 
     protected $casts = [
-        'subject_id' => 'integer',
-        'topic_id' => 'integer',
-        'version' => 'integer',
-        'order_in_group' => 'integer',
+        'subject_id'         => 'integer',
+        'topic_id'           => 'integer',
+        'version'            => 'integer',
+        'order_in_group'     => 'integer',
+        'source_page'        => 'integer',
         'is_current_version' => 'boolean',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'created_at'         => 'datetime',
+        'updated_at'         => 'datetime',
     ];
 
     protected static function booted(): void
@@ -98,6 +103,46 @@ class Question extends Model
     public function topic(): BelongsTo
     {
         return $this->belongsTo(Topic::class, 'topic_id');
+    }
+
+    public function mediaAssets(): HasMany
+    {
+        return $this->hasMany(MediaAsset::class, 'question_id')
+            ->orderBy('page_number', 'asc')
+            ->orderBy('created_at', 'asc');
+    }
+
+    public function confirmedMediaAssets(): HasMany
+    {
+        return $this->hasMany(MediaAsset::class, 'question_id')
+            ->where('association_status', 'confirmed')
+            ->orderBy('page_number', 'asc')
+            ->orderBy('created_at', 'asc');
+    }
+
+    public function iqpeResolutions(): HasMany
+    {
+        return $this->hasMany(IqpeQuestionResolution::class, 'question_id')
+            ->orderBy('created_at', 'desc')
+            ->orderBy('round_number', 'asc');
+    }
+
+    public function iqpeVerifications(): HasMany
+    {
+        return $this->hasMany(IqpeVerification::class, 'question_id')
+            ->orderBy('created_at', 'desc');
+    }
+
+    public function iqpeQualityAudits(): HasMany
+    {
+        return $this->hasMany(IqpeQualityAudit::class, 'question_id')
+            ->orderBy('created_at', 'desc');
+    }
+
+    public function iqpeAdminDecisions(): HasMany
+    {
+        return $this->hasMany(IqpeAdminDecision::class, 'question_id')
+            ->orderBy('created_at', 'desc');
     }
 }
 

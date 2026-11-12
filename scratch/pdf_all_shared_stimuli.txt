@@ -1,0 +1,17 @@
+A continuación se detallan los contextos compartidos que agrupan dos o más preguntas en el cuadernillo de Matemáticas:
+
+---
+
+### **Contexto 1**
+1. **Título / Tema:** Capacitación en informática básica para trabajadores de una empresa.
+2. **Página física del PDF:** Página 7.
+3. **Rango exacto de preguntas:** Preguntas **4 a 6**.
+4. **Incluye elemento visual:** Sí (incluye una tabla titulada *"Capacitación en informática básica"* con módulos, intensidad horaria y valor por hora).
+
+---
+
+### **Contexto 2**
+1. **Título / Tema:** Transporte y comercialización de mango y banano hacia las ciudades $W$ y $Z$.
+2. **Página física del PDF:** Página 10.
+3. **Rango exacto de preguntas:** Preguntas **9 a 13**.
+4. **Incluye elemento visual:** Sí (incluye una tabla con los precios de venta por tonelada de cada fruta y los costos de transporte y pago a trabajadores).

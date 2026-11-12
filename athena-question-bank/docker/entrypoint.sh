@@ -14,5 +14,7 @@ if [ -z "${APP_KEY:-}" ]; then
   export APP_KEY
 fi
 
+mkdir -p /var/www/database
+touch /var/www/database/database.sqlite
 php artisan package:discover --ansi
 exec php artisan serve --host=0.0.0.0 --port=8000

@@ -3,6 +3,12 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessIqpeDocumentJob;
+use App\Models\IqpeDocumentJob;
+use App\Models\IqpeExecutionLog;
+use App\Models\IqpeQualityAudit;
+use App\Models\IqpeVerification;
+use App\Models\Question;
 use App\Models\SourceDocument;
 use App\Services\SupabaseStorageService;
 use Illuminate\Http\JsonResponse;
@@ -44,19 +50,108 @@ class DocumentController extends Controller
             $query->where('exam_type', $request->input('exam_type'));
         }
 
-        // Búsqueda por título (insensible a mayúsculas en PostgreSQL con ILIKE)
+        // Búsqueda por título (portable entre PostgreSQL ILIKE y SQLite LIKE)
         if ($request->filled('search')) {
             $search = '%' . trim($request->input('search')) . '%';
-            $query->where('title', 'ilike', $search);
+            $op = DB::connection('question_bank')->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+            $query->where('title', $op, $search);
         }
 
         $perPage = min((int) $request->input('per_page', 15), 100);
         $documents = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
+        $docItems = collect($documents->items());
+        $docIds = $docItems->pluck('id')->all();
+
+        $jobsByDoc = ! empty($docIds)
+            ? IqpeDocumentJob::whereIn('source_document_id', $docIds)
+                ->orderBy('run_number', 'desc')
+                ->get()
+                ->groupBy('source_document_id')
+            : collect();
+
+        $questionsByDoc = ! empty($docIds)
+            ? Question::whereIn('source_document_id', $docIds)
+                ->where('is_current_version', true)
+                ->get(['id', 'source_document_id', 'status', 'key_status'])
+                ->groupBy('source_document_id')
+            : collect();
+
+        $latestJobIds = $jobsByDoc->map(fn ($list) => $list->first()?->id)->filter()->values()->all();
+
+        $verificationsByJob = ! empty($latestJobIds)
+            ? IqpeVerification::whereIn('job_id', $latestJobIds)
+                ->get(['job_id', 'verdict', 'recommended_status', 'requires_admin_review'])
+                ->groupBy('job_id')
+            : collect();
+
+        $auditsByJob = ! empty($latestJobIds)
+            ? IqpeQualityAudit::whereIn('job_id', $latestJobIds)
+                ->get(['job_id', 'passed_quality_check', 'duplicate_risk_flag', 'audit_warnings'])
+                ->groupBy('job_id')
+            : collect();
+
+        $enrichedDocs = $docItems->map(function (SourceDocument $doc) use ($jobsByDoc, $questionsByDoc, $verificationsByJob, $auditsByJob) {
+            $latestJob = ($jobsByDoc->get($doc->id) ?? collect())->first();
+            $docQuestions = $questionsByDoc->get($doc->id) ?? collect();
+            $totalExtracted = $docQuestions->count();
+
+            $jobVerifications = $latestJob ? ($verificationsByJob->get($latestJob->id) ?? collect()) : collect();
+            $jobAudits = $latestJob ? ($auditsByJob->get($latestJob->id) ?? collect()) : collect();
+
+            $criticalIssuesCount = $jobAudits->filter(function ($a) {
+                $sev = $a->audit_warnings['highest_severity'] ?? 'none';
+                $cls = $a->audit_warnings['overall_classification'] ?? '';
+                return $sev === 'critical' || $cls === 'blocked_critical';
+            })->count();
+
+            $duplicateRiskCount = $jobAudits->where('duplicate_risk_flag', true)->count();
+
+            $verifiedCount = $jobVerifications->isNotEmpty()
+                ? $jobVerifications->whereIn('verdict', ['verified_candidate', 'verified_candidate_no_official_key'])->count()
+                : $docQuestions->where('key_status', 'verified')->count();
+
+            $requiresReviewCount = $jobVerifications->isNotEmpty()
+                ? $jobVerifications->where('requires_admin_review', true)->count()
+                : $docQuestions->where('status', 'draft')->count();
+
+            $arr = $doc->toArray();
+            $arr['latest_job'] = $latestJob ? [
+                'id'               => $latestJob->id,
+                'run_number'       => $latestJob->run_number,
+                'status'           => $latestJob->status,
+                'duration_seconds' => $latestJob->duration_seconds,
+                'error_log'        => $latestJob->error_log,
+                'started_at'       => $latestJob->started_at?->toIso8601String(),
+                'completed_at'     => $latestJob->completed_at?->toIso8601String(),
+            ] : null;
+            $arr['iqpe_summary'] = [
+                'total_extracted'       => $totalExtracted,
+                'verified_count'        => $verifiedCount,
+                'requires_review_count' => $requiresReviewCount,
+                'critical_issues_count' => $criticalIssuesCount,
+                'duplicate_risk_count'  => $duplicateRiskCount,
+                'approved_count'        => $docQuestions->where('status', 'review')->count(),
+                'published_count'       => $docQuestions->where('status', 'published')->count(),
+                'rejected_count'        => $docQuestions->where('status', 'archived')->count(),
+            ];
+
+            return $arr;
+        })->values()->all();
+
+        $globalStats = [
+            'total_documents'       => SourceDocument::count(),
+            'total_extracted'       => Question::where('is_current_version', true)->count(),
+            'total_published'       => Question::where('is_current_version', true)->where('status', 'published')->count(),
+            'total_approved_review' => Question::where('is_current_version', true)->where('status', 'review')->count(),
+            'failed_jobs_count'     => collect($enrichedDocs)->filter(fn ($d) => ($d['latest_job']['status'] ?? $d['status']) === 'failed')->count(),
+        ];
+
         return response()->json([
-            'success' => true,
-            'data' => $documents->items(),
-            'meta' => [
+            'success'      => true,
+            'data'         => $enrichedDocs,
+            'global_stats' => $globalStats,
+            'meta'         => [
                 'current_page' => $documents->currentPage(),
                 'last_page'    => $documents->lastPage(),
                 'per_page'     => $documents->perPage(),
@@ -151,18 +246,47 @@ class DocumentController extends Controller
                 'status'         => 'uploaded',
             ]);
 
+            // 6. Creación y Despacho Asíncrono de Trabajo IQPE
+            $jobUuid = (string) Str::uuid();
+            $runNumber = 1;
+
+            $iqpeJob = IqpeDocumentJob::create([
+                'id'                 => $jobUuid,
+                'source_document_id' => $document->id,
+                'run_number'         => $runNumber,
+                'status'             => 'queued',
+                'config'             => [
+                    'auto_dispatched' => true,
+                    'original_name'   => $file->getClientOriginalName(),
+                    'size_bytes'      => $file->getSize(),
+                ],
+            ]);
+
+            IqpeExecutionLog::record(
+                $jobUuid,
+                'pdf_ingestion',
+                'info',
+                "Documento '{$document->title}' cargado exitosamente. Trabajo IQPE #{$runNumber} encolado para procesamiento asíncrono."
+            );
+
+            // Despachar Job a la cola en segundo plano
+            ProcessIqpeDocumentJob::dispatch($document->id, $jobUuid);
+
             return response()->json([
                 'success' => true,
-                'message' => 'Documento PDF subido y registrado exitosamente.',
+                'message' => 'Documento PDF subido exitosamente. Procesamiento IQPE encolado en segundo plano.',
                 'data' => [
                     'id'             => $document->id,
+                    'document_id'    => $document->id,
+                    'job_id'         => $jobUuid,
+                    'run_number'     => $runNumber,
                     'title'          => $document->title,
                     'storage_path'   => $document->storage_path,
                     'year'           => $document->year,
                     'exam_type'      => $document->exam_type,
                     'total_pages'    => $document->total_pages,
                     'has_answer_key' => $document->has_answer_key,
-                    'status'         => $document->status,
+                    'status'         => 'queued',
                     'created_at'     => $document->created_at?->toIso8601String(),
                     'file_metadata'  => [
                         'original_name' => $file->getClientOriginalName(),
@@ -196,6 +320,13 @@ class DocumentController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
+        }
+
         $document = SourceDocument::find($id);
 
         if (! $document) {
@@ -254,6 +385,13 @@ class DocumentController extends Controller
                 'success' => false,
                 'message' => 'Eliminación rechazada: se requiere confirmación explícita obligatoria (?confirm=true o body { "confirm": true }).',
             ], 400);
+        }
+
+        if (! Str::isUuid($id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identificador de documento no válido.',
+            ], 422);
         }
 
         $document = SourceDocument::find($id);

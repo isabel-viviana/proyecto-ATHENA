@@ -51,6 +51,8 @@ const AdminLayout = () => {
     ];
 
     const handleLogout = async () => {
+        localStorage.removeItem("athena_admin_token");
+        localStorage.removeItem("athena_admin_user");
         await logout();
         navigate("/admin/login");
     };

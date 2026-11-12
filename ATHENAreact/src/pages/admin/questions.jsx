@@ -7,17 +7,32 @@ import {
     deleteDocument,
     extractDocumentQuestions,
     getExtractionStatus,
+    getIqpeStatus,
+    retryDocumentProcessing,
+    retryDocumentResolutions,
     getExtractedQuestions,
     getQuestion,
     updateQuestion,
     approveQuestion,
     rejectQuestion,
+    returnQuestionToReview,
+    publishQuestion,
     getSubjectsCatalog,
     getTopicsCatalog,
     getQuestions,
     getDocumentMedia,
+    bulkApproveQuestions,
+    getDocumentAudit,
+    runDocumentAudit,
 } from "../../api/documents";
-import { MediaImage, StimulusMedia, QuestionMedia } from "../../components/admin/QuestionMedia";
+import { MediaImage, StimulusMedia, QuestionMedia, MediaAssociationPanel } from "../../components/admin/QuestionMedia";
+import IqpeReviewInbox from "../../components/admin/IqpeReviewInbox";
+import IqpeQuestionDetailModal from "../../components/admin/IqpeQuestionDetailModal";
+import {
+    IqpeReasonActionModal,
+    IqpeApproveConfirmModal,
+    IqpePublishConfirmModal,
+} from "../../components/admin/IqpeDecisionModals";
 
 // Mapeo de áreas académicas oficiales del ICFES
 const SUBJECT_MAP = {
@@ -28,7 +43,7 @@ const SUBJECT_MAP = {
     5: { name: "Inglés", color: "#06b6d4", bg: "rgba(6, 182, 212, 0.12)", border: "rgba(6, 182, 212, 0.3)", icon: "fa-language" },
 };
 
-// Componente para renderizar cada pregunta extraída con opciones diferenciadas y acciones de revisión pedagógica
+// Componente para renderizar cada pregunta extraída como unidad completa pedagógica
 const QuestionCardItem = ({
     q,
     isExpanded,
@@ -36,7 +51,13 @@ const QuestionCardItem = ({
     onEdit,
     onApprove,
     onReject,
+    onOpenDetail = null,
+    onPublish = null,
+    onReturnToReview = null,
     isProcessingAction,
+    isSelected = false,
+    onToggleSelect = null,
+    showCheckbox = false,
 }) => {
     const subjectInfo = SUBJECT_MAP[q.subject_id] || {
         name: "ICFES General",
@@ -47,17 +68,80 @@ const QuestionCardItem = ({
     };
 
     const isVerifiedKey = q.key_status === "verified";
+    const isPublished = q.status === "published";
     const isApproved = q.status === "review";
     const isArchived = q.status === "archived";
+    const sourcePage = q.source_page || q.stimulus?.source_page || null;
+    const hasConfirmedMedia =
+        (q.confirmed_media_assets && q.confirmed_media_assets.length > 0) ||
+        Boolean(q.question_image_path) ||
+        (q.stimulus?.confirmed_media_assets && q.stimulus.confirmed_media_assets.length > 0) ||
+        Boolean(q.stimulus?.media_path);
 
     return (
-        <article className="qst-question-item-card">
+        <article
+            className={`qst-question-item-card ${isSelected ? "qst-question-item-card--selected" : ""}`}
+            style={{
+                border: isSelected ? "2px solid #22c55e" : undefined,
+                background: isSelected ? "rgba(34, 197, 94, 0.04)" : undefined,
+                transition: "all 0.2s ease",
+            }}
+        >
             {/* Header de la Pregunta */}
             <div className="qst-question-card-top">
-                <div className="qst-question-meta-left">
+                <div className="qst-question-meta-left" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {showCheckbox && (
+                        <label
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                cursor: "pointer",
+                                padding: "3px 8px",
+                                borderRadius: 6,
+                                background: isSelected ? "rgba(34, 197, 94, 0.18)" : "rgba(148, 163, 184, 0.1)",
+                                border: isSelected ? "1px solid #4ade80" : "1px solid rgba(148, 163, 184, 0.25)",
+                                userSelect: "none",
+                            }}
+                            title="Seleccionar para aprobación masiva"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => onToggleSelect && onToggleSelect(q.id)}
+                                style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#22c55e" }}
+                            />
+                            <span style={{ fontSize: "0.72rem", fontWeight: 700, color: isSelected ? "#4ade80" : "#94a3b8" }}>
+                                {isSelected ? "Seleccionada" : "Seleccionar"}
+                            </span>
+                        </label>
+                    )}
+
                     <span className="qst-question-num-tag">
                         Pregunta #{q.order_in_group || (q.id ? q.id.slice(0, 8) : "—")}
                     </span>
+
+                    {sourcePage && (
+                        <span
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "0.74rem",
+                                fontWeight: 600,
+                                color: "#94a3b8",
+                                background: "rgba(148, 163, 184, 0.12)",
+                                border: "1px solid rgba(148, 163, 184, 0.25)",
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                            }}
+                            title={`Página ${sourcePage} del cuadernillo original`}
+                        >
+                            <i className="fa-solid fa-file-lines" style={{ color: "#38bdf8" }}></i>
+                            Pág. {sourcePage}
+                        </span>
+                    )}
 
                     <span
                         className="qst-subject-badge"
@@ -71,7 +155,25 @@ const QuestionCardItem = ({
                         {subjectInfo.name}
                     </span>
 
-                    {isApproved ? (
+                    {isPublished ? (
+                        <span
+                            className="qst-status-pill-published"
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "3px 9px",
+                                borderRadius: "999px",
+                                fontSize: "0.74rem",
+                                fontWeight: 700,
+                                background: "rgba(168, 85, 247, 0.15)",
+                                color: "#c084fc",
+                                border: "1px solid rgba(168, 85, 247, 0.35)",
+                            }}
+                        >
+                            <i className="fa-solid fa-globe"></i> Publicada
+                        </span>
+                    ) : isApproved ? (
                         <span className="qst-status-pill-review">
                             <i className="fa-solid fa-circle-check"></i> Aprobada / Revisada
                         </span>
@@ -84,9 +186,42 @@ const QuestionCardItem = ({
                             <i className="fa-solid fa-clock-rotate-left"></i> Borrador IA
                         </span>
                     )}
+
+                    {hasConfirmedMedia && (
+                        <span
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "3px 9px",
+                                borderRadius: "999px",
+                                fontSize: "0.74rem",
+                                fontWeight: 700,
+                                background: "rgba(56, 189, 248, 0.14)",
+                                color: "#38bdf8",
+                                border: "1px solid rgba(56, 189, 248, 0.35)",
+                            }}
+                            title="Cuenta con recurso visual confirmado"
+                        >
+                            <i className="fa-solid fa-image"></i> Recurso Visual
+                        </span>
+                    )}
                 </div>
 
                 <div className="qst-question-meta-right">
+                    {/* Badge de Estado de Auditoría de Calidad */}
+                    {q.extraction_warnings ? (
+                        <span className="qst-audit-badge-review" title={`Observación de auditoría: ${q.extraction_warnings}`}>
+                            <i className="fa-solid fa-triangle-exclamation"></i>
+                            <span>Con Observación</span>
+                        </span>
+                    ) : (
+                        <span className="qst-audit-badge-ready" title="Validación automática completada sin observaciones">
+                            <i className="fa-solid fa-circle-check"></i>
+                            <span>Lista para Aprobación</span>
+                        </span>
+                    )}
+
                     {/* Badge de Verificación de Clave */}
                     {isVerifiedKey ? (
                         <span className="qst-key-badge qst-key-badge--verified" title="Clave de respuesta verificada en hoja oficial o calibrada por evaluador">
@@ -94,7 +229,7 @@ const QuestionCardItem = ({
                             <span>Clave Verificada</span>
                         </span>
                     ) : (
-                        <span className="qst-key-badge qst-key-badge--unverified" title="Clave no encontrada o pendiente de validación">
+                        <span className="qst-key-badge qst-key-badge--unverified" title="Clave pedagógica pendiente de validación (aprobación permitida)">
                             <i className="fa-solid fa-triangle-exclamation"></i>
                             <span>Clave no verificada</span>
                         </span>
@@ -117,6 +252,16 @@ const QuestionCardItem = ({
                 {q.statement}
             </div>
             <QuestionMedia question={q} />
+
+            {/* Observación de Auditoría de Calidad si existe */}
+            {q.extraction_warnings && (
+                <div className="qst-audit-warning-box">
+                    <i className="fa-solid fa-triangle-exclamation" style={{ marginTop: "2px", flexShrink: 0 }}></i>
+                    <div>
+                        <strong>Observación de Auditoría de Calidad:</strong> {q.extraction_warnings}
+                    </div>
+                </div>
+            )}
 
             {/* Opciones de Respuesta */}
             {isExpanded && (
@@ -198,6 +343,19 @@ const QuestionCardItem = ({
                 </div>
 
                 <div className="qst-actions-buttons-group">
+                    {onOpenDetail && (
+                        <button
+                            type="button"
+                            className="qst-btn-outline"
+                            onClick={() => onOpenDetail(q)}
+                            disabled={isProcessingAction}
+                            title="Ver resoluciones R1/R2/R3, clave oficial, auditoría y duplicados"
+                        >
+                            <i className="fa-solid fa-magnifying-glass-chart"></i>
+                            <span>Detalle IQPE</span>
+                        </button>
+                    )}
+
                     <button
                         type="button"
                         className="qst-btn-action-edit"
@@ -212,14 +370,14 @@ const QuestionCardItem = ({
                     <button
                         type="button"
                         className="qst-btn-action-approve"
-                        onClick={() => onApprove(q)}
-                        disabled={isProcessingAction || isApproved}
+                        onClick={() => onApprove(q, q.iqpe_summary?.eligibility || null)}
+                        disabled={isProcessingAction || isApproved || isPublished}
                         title={
-                            isApproved
-                                ? "Pregunta ya aprobada para el banco"
-                                : isVerifiedKey
-                                ? "Aprobar pedagógicamente para el banco"
-                                : "Requiere clave verificada para aprobar"
+                            isPublished
+                                ? "Pregunta ya publicada"
+                                : isApproved
+                                ? "Pregunta ya aprobada para revisión final"
+                                : "Aprobar administrativamente (pasa a estado review sin publicar)"
                         }
                     >
                         {isProcessingAction ? (
@@ -230,16 +388,45 @@ const QuestionCardItem = ({
                         <span>{isApproved ? "Aprobada" : "Aprobar"}</span>
                     </button>
 
-                    <button
-                        type="button"
-                        className="qst-btn-action-reject"
-                        onClick={() => onReject(q)}
-                        disabled={isProcessingAction || isArchived}
-                        title="Rechazar y archivar reactivo sin afectar estímulo"
-                    >
-                        <i className="fa-solid fa-ban"></i>
-                        <span>{isArchived ? "Archivada" : "Rechazar"}</span>
-                    </button>
+                    {isApproved && onPublish && (
+                        <button
+                            type="button"
+                            className="qst-btn-save"
+                            style={{ padding: "6px 12px", fontSize: "0.78rem", background: "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)" }}
+                            onClick={() => onPublish(q, q.iqpe_summary?.eligibility || null)}
+                            disabled={isProcessingAction}
+                            title="Publicar pregunta aprobada para estudiantes"
+                        >
+                            <i className="fa-solid fa-globe"></i>
+                            <span>Publicar</span>
+                        </button>
+                    )}
+
+                    {(isApproved || isArchived || isPublished) && onReturnToReview && (
+                        <button
+                            type="button"
+                            className="qst-btn-outline"
+                            onClick={() => onReturnToReview(q)}
+                            disabled={isProcessingAction}
+                            title="Devolver a revisión/corrección conservando historial"
+                        >
+                            <i className="fa-solid fa-rotate-left"></i>
+                            <span>Devolver</span>
+                        </button>
+                    )}
+
+                    {!isPublished && (
+                        <button
+                            type="button"
+                            className="qst-btn-action-reject"
+                            onClick={() => onReject(q)}
+                            disabled={isProcessingAction || isArchived}
+                            title="Rechazar y archivar reactivo con motivo obligatorio"
+                        >
+                            <i className="fa-solid fa-ban"></i>
+                            <span>{isArchived ? "Archivada" : "Rechazar"}</span>
+                        </button>
+                    )}
                 </div>
             </div>
         </article>
@@ -271,8 +458,11 @@ const Questions = () => {
         last_page: 1,
         per_page: 10,
         total: 0,
+        from: null,
+        to: null,
     });
     const [bankPage, setBankPage] = useState(1);
+    const [bankPerPage, setBankPerPage] = useState(10);
     const [bankSearch, setBankSearch] = useState("");
     const [bankSubjectFilter, setBankSubjectFilter] = useState("Todas");
     const [bankStatusFilter, setBankStatusFilter] = useState("official");
@@ -341,6 +531,7 @@ const Questions = () => {
     // =========================================================
     const [selectedExtractionDocId, setSelectedExtractionDocId] = useState("");
     const [extractionStatusData, setExtractionStatusData] = useState(null);
+    const [iqpeJobData, setIqpeJobData] = useState(null);
     const [extractedQuestions, setExtractedQuestions] = useState([]);
     const [isExtracting, setIsExtracting] = useState(false);
     const [isLoadingExtractionData, setIsLoadingExtractionData] = useState(false);
@@ -361,6 +552,8 @@ const Questions = () => {
         difficulty: "medium",
         key_status: "unverified",
         correct_option: "A",
+        notes: "",
+        confirm_official_key: false,
         options: {
             A: "",
             B: "",
@@ -372,26 +565,55 @@ const Questions = () => {
     const [isLoadingTopics, setIsLoadingTopics] = useState(false);
     const [isSavingEdit, setIsSavingEdit] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState(null);
-    const [isConfirmRejectOpen, setIsConfirmRejectOpen] = useState(false);
-    const [questionToReject, setQuestionToReject] = useState(null);
+
+    // =========================================================
+    // 3.5 ESTADOS BLOQUE 6: BANDEJA IQPE, DETALLE Y DECISIONES
+    // =========================================================
+    const [docGlobalStats, setDocGlobalStats] = useState(null);
+    const [reviewQueueNonce, setReviewQueueNonce] = useState(0);
+    const [detailQuestionId, setDetailQuestionId] = useState(null);
+    const [detailRefreshNonce, setDetailRefreshNonce] = useState(0);
+    const [approveModalState, setApproveModalState] = useState({ isOpen: false, question: null, eligibility: null });
+    const [publishModalState, setPublishModalState] = useState({ isOpen: false, question: null, eligibility: null });
+    const [reasonModalState, setReasonModalState] = useState({ isOpen: false, mode: "reject", question: null });
+
+    // =========================================================
+    // 3.3 ESTADOS: SELECCIÓN MÚLTIPLE Y APROBACIÓN MASIVA
+    // =========================================================
+    const [selectedQuestionIds, setSelectedQuestionIds] = useState(new Set());
+    const [isBulkApproving, setIsBulkApproving] = useState(false);
+    const [bulkSummary, setBulkSummary] = useState(null);
+    const [isBulkSummaryOpen, setIsBulkSummaryOpen] = useState(false);
+
+    // =========================================================
+    // 3.4 ESTADOS: AUDITORÍA AUTOMÁTICA Y FILTROS DE CALIDAD
+    // =========================================================
+    const [auditFilter, setAuditFilter] = useState("all"); // 'all' | 'ready' | 'issues'
+    const [isRunningAudit, setIsRunningAudit] = useState(false);
 
 
     const fileInputRef = useRef(null);
 
-    // Recursos visuales extraídos del PDF (pendientes de asociación)
+    // Recursos visuales extraídos del PDF (pendientes y confirmados en media_assets)
     const [docMedia, setDocMedia] = useState(null);
-    useEffect(() => {
-        let cancelled = false;
-        if (activeTab !== "ai_extraction" || !selectedExtractionDocId) {
-            return undefined;
+    const fetchDocMedia = useCallback(async (docId) => {
+        if (!docId) {
+            setDocMedia(null);
+            return;
         }
-        getDocumentMedia(selectedExtractionDocId)
-            .then((res) => !cancelled && setDocMedia(res?.success ? res.data : null))
-            .catch(() => !cancelled && setDocMedia(null));
-        return () => {
-            cancelled = true;
-        };
-    }, [activeTab, selectedExtractionDocId]);
+        try {
+            const res = await getDocumentMedia(docId);
+            setDocMedia(res?.success ? res.data : null);
+        } catch {
+            setDocMedia(null);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === "ai_extraction" && selectedExtractionDocId) {
+            fetchDocMedia(selectedExtractionDocId);
+        }
+    }, [activeTab, selectedExtractionDocId, fetchDocMedia]);
 
     // =========================================================
     // 4. CARGA DE DOCUMENTOS DESDE EL BACKEND
@@ -408,6 +630,9 @@ const Questions = () => {
             const response = await getDocuments(params);
             if (response && response.success) {
                 setDocuments(response.data || []);
+                if (response.global_stats) {
+                    setDocGlobalStats(response.global_stats);
+                }
             } else {
                 setDocuments([]);
             }
@@ -431,14 +656,16 @@ const Questions = () => {
     // =========================================================
     // 4.1 CARGA DEL BANCO DE PREGUNTAS REAL DESDE LARAVEL
     // =========================================================
-    const fetchBankQuestions = useCallback(async (targetPage = 1) => {
+    const fetchBankQuestions = useCallback(async (targetPage = 1, customPerPage = null) => {
         setIsLoadingBank(true);
         setBankError(null);
         try {
             const page = targetPage || 1;
+            const perPageToUse = customPerPage || bankPerPage || 10;
             const params = {
                 page,
-                per_page: 10,
+                per_page: perPageToUse,
+                sort: "order_asc",
             };
             if (bankSearch.trim()) params.search = bankSearch.trim();
             if (bankSubjectFilter !== "Todas") params.subject_id = bankSubjectFilter;
@@ -446,7 +673,10 @@ const Questions = () => {
 
             const res = await getQuestions(params);
             if (res && res.success) {
-                setBankQuestions(res.data || []);
+                const items = res.data || [];
+                setBankQuestions(items);
+                // Expandir las opciones de la página actual por defecto para facilitar su lectura
+                setExpandedBankIds(new Set(items.map((item) => item.id)));
                 if (res.meta) {
                     setBankPagination(res.meta);
                     setBankPage(res.meta.current_page || page);
@@ -467,13 +697,39 @@ const Questions = () => {
         } finally {
             setIsLoadingBank(false);
         }
-    }, [bankSearch, bankSubjectFilter, bankStatusFilter]);
+    }, [bankSearch, bankSubjectFilter, bankStatusFilter, bankPerPage]);
 
     useEffect(() => {
         if (activeTab === "questions") {
             fetchBankQuestions(1);
         }
-    }, [activeTab, bankSubjectFilter, bankStatusFilter, fetchBankQuestions]);
+    }, [activeTab, bankSubjectFilter, bankStatusFilter, bankPerPage, fetchBankQuestions]);
+
+    // Agrupa preguntas consecutivas del banco que comparten el mismo estímulo respetando el orden 1 → 49
+    const groupedBankBlocks = useMemo(() => {
+        if (!bankQuestions || bankQuestions.length === 0) return [];
+        const blocks = [];
+        bankQuestions.forEach((q) => {
+            if (q.stimulus_id && q.stimulus) {
+                const lastBlock = blocks[blocks.length - 1];
+                if (lastBlock && lastBlock.type === "stimulus" && lastBlock.stimulus.id === q.stimulus_id) {
+                    lastBlock.questions.push(q);
+                } else {
+                    blocks.push({
+                        type: "stimulus",
+                        stimulus: q.stimulus,
+                        questions: [q],
+                    });
+                }
+            } else {
+                blocks.push({
+                    type: "standalone",
+                    question: q,
+                });
+            }
+        });
+        return blocks;
+    }, [bankQuestions]);
 
     // =========================================================
     // 5. MANEJADORES: SUBIDA DE DOCUMENTOS
@@ -516,14 +772,14 @@ const Questions = () => {
             payload.append("has_answer_key", uploadHasAnswerKey ? "1" : "0");
             if (uploadTotalPages) payload.append("total_pages", uploadTotalPages);
 
-            await uploadDocument(payload, (progressEvent) => {
+            const res = await uploadDocument(payload, (progressEvent) => {
                 if (progressEvent.total) {
                     const pct = Math.round((progressEvent.loaded * 100) / progressEvent.total);
                     setUploadProgress(pct);
                 }
             });
 
-            setDocSuccess("¡Cuadernillo PDF subido y registrado exitosamente en Supabase Storage!");
+            setDocSuccess("¡Cuadernillo PDF subido exitosamente! Trabajo IQPE encolado en segundo plano.");
             setIsUploadModalOpen(false);
 
             // Reset form
@@ -532,8 +788,17 @@ const Questions = () => {
             setUploadTotalPages("");
             if (fileInputRef.current) fileInputRef.current.value = "";
 
-            // Refrescar lista
+            // Refrescar lista y pasar a la pestaña de extracción automáticamente
             await fetchDocuments();
+            const newDocId = res?.data?.id || res?.data?.document_id;
+            if (newDocId) {
+                setSelectedExtractionDocId(newDocId);
+                setActiveTab("ai_extraction");
+                setIsExtracting(true);
+                if (res?.data) {
+                    setIqpeJobData(res.data);
+                }
+            }
         } catch (err) {
             console.error("Error al subir documento:", err);
             const msg =
@@ -663,14 +928,22 @@ const Questions = () => {
 
         try {
             const [statusRes, questionsRes] = await Promise.allSettled([
-                getExtractionStatus(docId),
+                getIqpeStatus(docId),
                 getExtractedQuestions(docId),
             ]);
 
             if (statusRes.status === "fulfilled" && statusRes.value?.success) {
-                setExtractionStatusData(statusRes.value.data);
+                const statusPayload = statusRes.value.data;
+                setExtractionStatusData(statusPayload);
+                setIqpeJobData(statusPayload);
+
+                if (["queued", "extracting", "solving_round_1", "solving_round_2", "verifying", "solving_round_3", "auditing"].includes(statusPayload?.status)) {
+                    setIsExtracting(true);
+                } else if (statusPayload?.status === "completed" || statusPayload?.status === "failed") {
+                    setIsExtracting(false);
+                }
             } else if (statusRes.status === "rejected") {
-                console.error("Error al consultar estado de extracción:", statusRes.reason);
+                console.error("Error al consultar estado IQPE:", statusRes.reason);
             }
 
             if (questionsRes.status === "fulfilled" && questionsRes.value?.success) {
@@ -690,29 +963,144 @@ const Questions = () => {
         }
     }, []);
 
-    const handleTriggerExtraction = async () => {
+    // Polling reactivo para jobs encolados o en extracción en segundo plano
+    useEffect(() => {
+        if (!selectedExtractionDocId || !isExtracting) return;
+
+        const intervalId = setInterval(async () => {
+            try {
+                const res = await getIqpeStatus(selectedExtractionDocId);
+                if (res && res.success && res.data) {
+                    setIqpeJobData(res.data);
+                    setExtractionStatusData(res.data);
+
+                    if (res.data.status === "completed") {
+                        setIsExtracting(false);
+                        setExtractionSuccess(res.data.progress || `¡Extracción completada! ${res.data.total_questions_detected} preguntas detectadas.`);
+                        await loadExtractionData(selectedExtractionDocId);
+                        await fetchDocuments();
+                    } else if (res.data.status === "failed") {
+                        setIsExtracting(false);
+                        setExtractionError(res.data.error_detail || "El procesamiento asíncrono IQPE ha fallado.");
+                        await loadExtractionData(selectedExtractionDocId);
+                        await fetchDocuments();
+                    }
+                }
+            } catch (err) {
+                console.error("Error en polling de estado IQPE:", err);
+            }
+        }, 3000);
+
+        return () => clearInterval(intervalId);
+    }, [selectedExtractionDocId, isExtracting, loadExtractionData, fetchDocuments]);
+
+    const handleTriggerExtraction = async (docIdToUse = null) => {
+        const targetDocId = (typeof docIdToUse === "string" && docIdToUse) ? docIdToUse : selectedExtractionDocId;
+        if (!targetDocId || isExtracting) return;
+        setIsExtracting(true);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+
+        try {
+            const res = await extractDocumentQuestions(targetDocId);
+            if (res?.success) {
+                setExtractionSuccess(res.message || "Trabajo IQPE encolado en segundo plano. Monitoreando ejecución...");
+                if (res.data) {
+                    setIqpeJobData(res.data);
+                }
+                await fetchDocuments();
+            } else {
+                setExtractionError(res?.message || "Ocurrió un problema al encolar la extracción.");
+                setIsExtracting(false);
+            }
+        } catch (err) {
+            console.error("Error al extraer preguntas:", err);
+            const msg = err.response?.data?.message || err.message || "Fallo en la comunicación con el microservicio.";
+            setExtractionError(msg);
+            setIsExtracting(false);
+        }
+    };
+
+    const handleRetryProcessing = async (docIdOverride = null) => {
+        const targetDocId = typeof docIdOverride === "string" && docIdOverride ? docIdOverride : selectedExtractionDocId;
+        if (!targetDocId || isExtracting) return;
+        setIsExtracting(true);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+
+        try {
+            const res = await retryDocumentProcessing(targetDocId);
+            if (res?.success) {
+                setExtractionSuccess(res.message || "Reintento IQPE encolado en segundo plano. Monitoreando ejecución...");
+                if (res.data) {
+                    setIqpeJobData(res.data);
+                }
+                await fetchDocuments();
+            } else {
+                setExtractionError(res?.message || "No se pudo reintentar el procesamiento.");
+                setIsExtracting(false);
+            }
+        } catch (err) {
+            console.error("Error al reintentar procesamiento:", err);
+            const msg = err.response?.data?.message || err.message || "Error al solicitar reintento.";
+            setExtractionError(msg);
+            setIsExtracting(false);
+        }
+    };
+
+    const handleRetryResolutionsOnly = async () => {
         if (!selectedExtractionDocId || isExtracting) return;
         setIsExtracting(true);
         setExtractionError(null);
         setExtractionSuccess(null);
 
         try {
-            const res = await extractDocumentQuestions(selectedExtractionDocId);
+            const res = await retryDocumentResolutions(selectedExtractionDocId);
             if (res?.success) {
-                setExtractionSuccess(res.message || "¡Extracción con Gemini completada exitosamente!");
-                await loadExtractionData(selectedExtractionDocId);
+                setExtractionSuccess(res.message || "Reanudación de resoluciones R1/R2/R3 encolada sin re-extraer el PDF.");
+                if (res.data) {
+                    setIqpeJobData(res.data);
+                }
                 await fetchDocuments();
             } else {
-                setExtractionError(res?.message || "Ocurrió un problema durante la extracción.");
+                setExtractionError(res?.message || "No se pudieron reanudar las resoluciones.");
+                setIsExtracting(false);
             }
         } catch (err) {
-            console.error("Error al extraer preguntas:", err);
-            const msg = err.response?.data?.message || err.message || "Fallo en la comunicación con el microservicio.";
+            const msg = err.response?.data?.message || err.message || "Error al reanudar resoluciones.";
             setExtractionError(msg);
-            await loadExtractionData(selectedExtractionDocId);
-        } finally {
             setIsExtracting(false);
         }
+    };
+
+    const handleRunAudit = async () => {
+        if (!selectedExtractionDocId || isRunningAudit) return;
+        setIsRunningAudit(true);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+        try {
+            const res = await runDocumentAudit(selectedExtractionDocId);
+            if (res && res.success) {
+                setExtractionSuccess(res.message || "Auditoría de calidad ejecutada y actualizada correctamente.");
+                await loadExtractionData(selectedExtractionDocId);
+            } else {
+                setExtractionError(res?.message || "No se pudo completar la auditoría de calidad.");
+            }
+        } catch (err) {
+            console.error("Error al ejecutar auditoría:", err);
+            setExtractionError(err.response?.data?.message || "Fallo al ejecutar la auditoría de calidad.");
+        } finally {
+            setIsRunningAudit(false);
+        }
+    };
+
+    const handleSelectOnlyReady = () => {
+        const readyIds = new Set(
+            extractedQuestions
+                .filter((q) => !q.extraction_warnings && q.status !== "rejected")
+                .map((q) => q.id)
+        );
+        setSelectedQuestionIds(readyIds);
     };
 
     const handleGoToExtraction = (doc) => {
@@ -750,6 +1138,8 @@ const Questions = () => {
             difficulty: q.difficulty || "medium",
             key_status: isKeyVerified ? "verified" : "unverified",
             correct_option: correctLetter,
+            notes: "",
+            confirm_official_key: false,
             options: optionsObj,
         });
 
@@ -803,6 +1193,8 @@ const Questions = () => {
                 difficulty: editForm.difficulty,
                 key_status: editForm.key_status,
                 correct_option: editForm.correct_option,
+                notes: editForm.notes?.trim() || null,
+                confirm_official_key: Boolean(editForm.confirm_official_key),
                 options: optionsArray,
             };
 
@@ -818,6 +1210,8 @@ const Questions = () => {
                 setBankQuestions((prev) =>
                     prev.map((item) => (item.id === editingQuestion.id ? { ...item, ...res.data } : item))
                 );
+                setReviewQueueNonce((n) => n + 1);
+                setDetailRefreshNonce((n) => n + 1);
                 fetchBankQuestions();
             } else {
                 setExtractionError(res?.message || "No se pudo actualizar la pregunta.");
@@ -831,31 +1225,42 @@ const Questions = () => {
         }
     };
 
-    const handleApprove = async (q) => {
+    const syncQuestionAcrossViews = (updatedQ) => {
+        if (!updatedQ?.id) return;
+        setExtractedQuestions((prev) =>
+            prev.map((item) => (item.id === updatedQ.id ? { ...item, ...updatedQ } : item))
+        );
+        setBankQuestions((prev) =>
+            prev.map((item) => (item.id === updatedQ.id ? { ...item, ...updatedQ } : item))
+        );
+        setReviewQueueNonce((n) => n + 1);
+        setDetailRefreshNonce((n) => n + 1);
+        fetchBankQuestions();
+    };
+
+    const handleOpenIqpeDetail = (q) => {
+        if (!q?.id) return;
+        setDetailQuestionId(q.id);
+    };
+
+    const handleApprove = (q, eligibility = null) => {
+        setApproveModalState({ isOpen: true, question: q, eligibility });
+    };
+
+    const handleConfirmApprove = async (payload) => {
+        const q = approveModalState.question;
+        if (!q) return;
+
         setActionLoadingId(q.id);
         setExtractionError(null);
         setExtractionSuccess(null);
 
-        // Validación preventiva en cliente para regla pedagógica:
-        if (q.key_status !== "verified") {
-            setExtractionError(
-                `No se puede aprobar la Pregunta #${q.order_in_group || q.id.slice(0, 8)}: La clave de respuesta no está verificada. Por favor haz clic en "Editar pregunta", selecciona la opción correcta y marca la clave como verificada antes de aprobar.`
-            );
-            setActionLoadingId(null);
-            return;
-        }
-
         try {
-            const res = await approveQuestion(q.id);
+            const res = await approveQuestion(q.id, payload);
             if (res && res.success) {
-                setExtractionSuccess(`¡Pregunta #${q.order_in_group || q.id.slice(0, 8)} aprobada pedagógicamente para el banco oficial!`);
-                setExtractedQuestions((prev) =>
-                    prev.map((item) => (item.id === q.id ? { ...item, ...res.data } : item))
-                );
-                setBankQuestions((prev) =>
-                    prev.map((item) => (item.id === q.id ? { ...item, ...res.data } : item))
-                );
-                fetchBankQuestions();
+                setExtractionSuccess(`¡Pregunta #${q.order_in_group || q.id.slice(0, 8)} aprobada administrativamente (estado review, sin publicar)!`);
+                syncQuestionAcrossViews(res.data);
+                setApproveModalState({ isOpen: false, question: null, eligibility: null });
             } else {
                 setExtractionError(res?.message || "No fue posible aprobar la pregunta.");
             }
@@ -863,47 +1268,172 @@ const Questions = () => {
             console.error("Error al aprobar pregunta:", err);
             const msg = err.response?.data?.message || err.message || "Fallo al aprobar la pregunta.";
             setExtractionError(msg);
+            setApproveModalState({ isOpen: false, question: null, eligibility: null });
         } finally {
             setActionLoadingId(null);
         }
     };
 
-    const handlePromptReject = (q) => {
-        setQuestionToReject(q);
-        setIsConfirmRejectOpen(true);
+    const handleRequestPublish = (q, eligibility = null) => {
+        setPublishModalState({ isOpen: true, question: q, eligibility });
     };
 
-    const handleConfirmReject = async () => {
-        if (!questionToReject) return;
-        setActionLoadingId(questionToReject.id);
+    const handleConfirmPublish = async (payload) => {
+        const q = publishModalState.question;
+        if (!q) return;
+
+        setActionLoadingId(q.id);
         setExtractionError(null);
         setExtractionSuccess(null);
 
         try {
-            const res = await rejectQuestion(questionToReject.id);
+            const res = await publishQuestion(q.id, payload);
             if (res && res.success) {
-                setExtractionSuccess(
-                    `Pregunta #${questionToReject.order_in_group || questionToReject.id.slice(0, 8)} rechazada y archivada. Los estímulos compartidos permanecen intactos.`
-                );
-                setExtractedQuestions((prev) =>
-                    prev.map((item) => (item.id === questionToReject.id ? { ...item, ...res.data } : item))
-                );
-                setBankQuestions((prev) =>
-                    prev.map((item) => (item.id === questionToReject.id ? { ...item, ...res.data } : item))
-                );
-                fetchBankQuestions();
-                setIsConfirmRejectOpen(false);
-                setQuestionToReject(null);
+                setExtractionSuccess(`¡Pregunta #${q.order_in_group || q.id.slice(0, 8)} publicada en el banco oficial para estudiantes!`);
+                syncQuestionAcrossViews(res.data);
+                setPublishModalState({ isOpen: false, question: null, eligibility: null });
             } else {
-                setExtractionError(res?.message || "No fue posible rechazar la pregunta.");
+                setExtractionError(res?.message || "No fue posible publicar la pregunta.");
             }
         } catch (err) {
-            console.error("Error al rechazar pregunta:", err);
-            const msg = err.response?.data?.message || err.message || "Fallo al rechazar la pregunta.";
+            const msg = err.response?.data?.message || err.message || "Error al publicar la pregunta.";
+            setExtractionError(msg);
+            setPublishModalState({ isOpen: false, question: null, eligibility: null });
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    // Controladores de Selección Múltiple y Aprobación Masiva
+    const handleToggleSelectQuestion = (id) => {
+        setSelectedQuestionIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAll = () => {
+        const allIds = new Set(filteredExtractedQuestions.map((q) => q.id));
+        setSelectedQuestionIds(allIds);
+    };
+
+    const handleDeselectAll = () => {
+        setSelectedQuestionIds(new Set());
+    };
+
+    const handleSelectAllExceptExcluded = () => {
+        const allIds = filteredExtractedQuestions.map((q) => q.id);
+        const next = new Set();
+        allIds.forEach((id) => {
+            if (!selectedQuestionIds.has(id)) {
+                next.add(id);
+            }
+        });
+        setSelectedQuestionIds(next);
+    };
+
+    const handleBulkApprove = async () => {
+        if (selectedQuestionIds.size === 0) return;
+
+        setIsBulkApproving(true);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+
+        const idsToApprove = Array.from(selectedQuestionIds);
+
+        try {
+            const res = await bulkApproveQuestions(idsToApprove);
+            if (res && res.success) {
+                const data = res.data || {};
+                setBulkSummary(data);
+                setIsBulkSummaryOpen(true);
+
+                const approvedSet = new Set(data.approved_ids || []);
+                setExtractedQuestions((prev) =>
+                    prev.map((item) =>
+                        approvedSet.has(item.id) ? { ...item, status: "review" } : item
+                    )
+                );
+                setBankQuestions((prev) =>
+                    prev.map((item) =>
+                        approvedSet.has(item.id) ? { ...item, status: "review" } : item
+                    )
+                );
+
+                // Quitar de la selección las aprobadas
+                setSelectedQuestionIds((prev) => {
+                    const next = new Set(prev);
+                    approvedSet.forEach((id) => next.delete(id));
+                    return next;
+                });
+
+                setExtractionSuccess(
+                    `Aprobación masiva finalizada: ${data.total_approved} preguntas aprobadas exitosamente.`
+                );
+                fetchBankQuestions();
+            } else {
+                setExtractionError(res?.message || "Error al procesar la aprobación masiva.");
+            }
+        } catch (err) {
+            console.error("Error en aprobación masiva:", err);
+            const msg = err.response?.data?.message || err.message || "Fallo al ejecutar la aprobación masiva.";
+            setExtractionError(msg);
+        } finally {
+            setIsBulkApproving(false);
+        }
+    };
+
+    const handlePromptReject = (q) => {
+        setReasonModalState({ isOpen: true, mode: "reject", question: q });
+    };
+
+    const handleRequestReturnToReview = (q) => {
+        setReasonModalState({ isOpen: true, mode: "return_to_review", question: q });
+    };
+
+    const handleConfirmReasonAction = async ({ reason, notes }) => {
+        const q = reasonModalState.question;
+        const mode = reasonModalState.mode;
+        if (!q) return;
+
+        setActionLoadingId(q.id);
+        setExtractionError(null);
+        setExtractionSuccess(null);
+
+        try {
+            const res = mode === "return_to_review"
+                ? await returnQuestionToReview(q.id, { reason, notes })
+                : await rejectQuestion(q.id, { reason, notes });
+
+            if (res && res.success) {
+                setExtractionSuccess(
+                    mode === "return_to_review"
+                        ? `Pregunta #${q.order_in_group || q.id.slice(0, 8)} devuelta a revisión conservando su historial.`
+                        : `Pregunta #${q.order_in_group || q.id.slice(0, 8)} rechazada con motivo registrado y archivada.`
+                );
+                syncQuestionAcrossViews(res.data);
+                setReasonModalState({ isOpen: false, mode: "reject", question: null });
+            } else {
+                setExtractionError(res?.message || "No fue posible completar la acción.");
+            }
+        } catch (err) {
+            console.error("Error en acción administrativa:", err);
+            const msg = err.response?.data?.message || err.message || "Error al ejecutar la acción administrativa.";
             setExtractionError(msg);
         } finally {
             setActionLoadingId(null);
         }
+    };
+
+    const handleRetryDocRow = async (doc) => {
+        setSelectedExtractionDocId(doc.id);
+        setActiveTab("ai_extraction");
+        await handleRetryProcessing(doc.id);
     };
 
     // Objeto del documento seleccionado para extracción
@@ -911,16 +1441,42 @@ const Questions = () => {
         return documents.find((d) => d.id === selectedExtractionDocId) || null;
     }, [documents, selectedExtractionDocId]);
 
-    // Agrupamiento de estímulos compartidos vs preguntas independientes
+    // Metadatos de auditoría de calidad automática registrados en PostgreSQL
+    const qualityAudit = useMemo(() => {
+        return extractionStatusData?.extraction_metadata?.quality_audit || null;
+    }, [extractionStatusData]);
+
+    // Métricas y contadores de calidad pedagógica
+    const auditCounts = useMemo(() => {
+        const total = extractedQuestions.length;
+        const issues = extractedQuestions.filter((q) => Boolean(q.extraction_warnings)).length;
+        const ready = extractedQuestions.filter((q) => !q.extraction_warnings && q.status !== "rejected").length;
+        const verifiedKeys = extractedQuestions.filter((q) => q.key_status === "verified").length;
+        return { total, issues, ready, verifiedKeys };
+    }, [extractedQuestions]);
+
+    // Preguntas filtradas por la pestaña activa de auditoría
+    const filteredExtractedQuestions = useMemo(() => {
+        if (!extractedQuestions || extractedQuestions.length === 0) return [];
+        if (auditFilter === "ready") {
+            return extractedQuestions.filter((q) => !q.extraction_warnings);
+        }
+        if (auditFilter === "issues") {
+            return extractedQuestions.filter((q) => Boolean(q.extraction_warnings));
+        }
+        return extractedQuestions;
+    }, [extractedQuestions, auditFilter]);
+
+    // Agrupamiento de estímulos compartidos vs preguntas independientes respetando el filtro activo
     const groupedExtraction = useMemo(() => {
-        if (!extractedQuestions || extractedQuestions.length === 0) {
+        if (!filteredExtractedQuestions || filteredExtractedQuestions.length === 0) {
             return { stimuliGroups: [], standaloneQuestions: [] };
         }
 
         const stimuliMap = new Map();
         const standalone = [];
 
-        extractedQuestions.forEach((q) => {
+        filteredExtractedQuestions.forEach((q) => {
             if (q.stimulus_id && q.stimulus) {
                 if (!stimuliMap.has(q.stimulus_id)) {
                     stimuliMap.set(q.stimulus_id, {
@@ -938,13 +1494,11 @@ const Questions = () => {
             stimuliGroups: Array.from(stimuliMap.values()),
             standaloneQuestions: standalone,
         };
-    }, [extractedQuestions]);
+    }, [filteredExtractedQuestions]);
 
     useEffect(() => {
-        if (activeTab === "ai_extraction") {
-            if (documents.length === 0 && !isLoadingDocs) {
-                fetchDocuments();
-            }
+        if ((activeTab === "ai_extraction" || activeTab === "review_queue") && documents.length === 0 && !isLoadingDocs) {
+            fetchDocuments();
         }
     }, [activeTab, documents.length, isLoadingDocs, fetchDocuments]);
 
@@ -1009,6 +1563,18 @@ const Questions = () => {
 
                 <button
                     type="button"
+                    className={`qst-tab-btn ${activeTab === "review_queue" ? "qst-tab-btn--active" : ""}`}
+                    onClick={() => setActiveTab("review_queue")}
+                >
+                    <i className="fa-solid fa-clipboard-check"></i>
+                    <span>Bandeja de Revisión IQPE</span>
+                    <span className="qst-tab-badge">
+                        {bankStats.draft_count ?? 0}
+                    </span>
+                </button>
+
+                <button
+                    type="button"
                     className={`qst-tab-btn ${activeTab === "documents" ? "qst-tab-btn--active" : ""}`}
                     onClick={() => setActiveTab("documents")}
                 >
@@ -1029,6 +1595,43 @@ const Questions = () => {
                     </span>
                 </button>
             </nav>
+
+            {activeTab !== "ai_extraction" && extractionSuccess && (
+                <div className="qst-alert qst-alert--success">
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <i className="fa-solid fa-circle-check"></i>
+                        <span>{extractionSuccess}</span>
+                    </div>
+                    <button className="qst-alert-close" onClick={() => setExtractionSuccess(null)} aria-label="Cerrar notificación">
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            )}
+
+            {activeTab !== "ai_extraction" && extractionError && (
+                <div className="qst-alert qst-alert--error">
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <i className="fa-solid fa-triangle-exclamation"></i>
+                        <span>{extractionError}</span>
+                    </div>
+                    <button className="qst-alert-close" onClick={() => setExtractionError(null)} aria-label="Cerrar error">
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            )}
+
+            {activeTab === "review_queue" && (
+                <IqpeReviewInbox
+                    documents={documents}
+                    refreshNonce={reviewQueueNonce}
+                    onOpenDetail={handleOpenIqpeDetail}
+                    onEdit={handleOpenEdit}
+                    onRequestApprove={handleApprove}
+                    onRequestReject={handlePromptReject}
+                    onRequestReturnToReview={handleRequestReturnToReview}
+                    onRequestPublish={handleRequestPublish}
+                />
+            )}
 
             {/* MENSAJES DE ESTADO (TOASTS / ALERTS) */}
             {docSuccess && (
@@ -1073,7 +1676,7 @@ const Questions = () => {
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
                                 <span className="qst-stat-label">Total Cuadernillos</span>
-                                <span className="qst-stat-val">{documents.length}</span>
+                                <span className="qst-stat-val">{docGlobalStats?.total_documents ?? documents.length}</span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--green">
                                 <i className="fa-solid fa-book-bookmark"></i>
@@ -1082,33 +1685,33 @@ const Questions = () => {
 
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
-                                <span className="qst-stat-label">Almacenamiento Seguro</span>
-                                <span className="qst-stat-val">icfes-documents</span>
+                                <span className="qst-stat-label">Extraídas Totales (IQPE)</span>
+                                <span className="qst-stat-val">{docGlobalStats?.total_extracted ?? documents.reduce((acc, d) => acc + (d.iqpe_summary?.total_extracted || 0), 0)}</span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--blue">
-                                <i className="fa-solid fa-shield-halved"></i>
+                                <i className="fa-solid fa-list-ol"></i>
                             </div>
                         </div>
 
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
-                                <span className="qst-stat-label">Microservicio Activo</span>
-                                <span className="qst-stat-val">Puerto 8001</span>
+                                <span className="qst-stat-label">Publicadas / Aprobadas</span>
+                                <span className="qst-stat-val">{(docGlobalStats?.total_published ?? 0)} / {(docGlobalStats?.total_approved_review ?? 0)}</span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--purple">
-                                <i className="fa-solid fa-network-wired"></i>
+                                <i className="fa-solid fa-globe"></i>
                             </div>
                         </div>
 
                         <div className="qst-stat-card">
                             <div className="qst-stat-info">
-                                <span className="qst-stat-label">Con Clave de Respuesta</span>
-                                <span className="qst-stat-val">
-                                    {documents.filter((d) => d.has_answer_key).length}
+                                <span className="qst-stat-label">Trabajos con Error</span>
+                                <span className="qst-stat-val" style={{ color: (docGlobalStats?.failed_jobs_count || 0) > 0 ? "#f87171" : undefined }}>
+                                    {docGlobalStats?.failed_jobs_count ?? documents.filter((d) => (d.latest_job?.status || d.status) === "failed").length}
                                 </span>
                             </div>
                             <div className="qst-stat-icon-wrap qst-stat-icon--amber">
-                                <i className="fa-solid fa-key"></i>
+                                <i className="fa-solid fa-triangle-exclamation"></i>
                             </div>
                         </div>
                     </section>
@@ -1187,10 +1790,9 @@ const Questions = () => {
                                 <thead>
                                     <tr>
                                         <th>Título del Cuadernillo</th>
-                                        <th>Año</th>
-                                        <th>Convocatoria</th>
-                                        <th>Respuestas</th>
-                                        <th>Estado</th>
+                                        <th>Año / Clave</th>
+                                        <th>Métricas IQPE (Verif / Rev / Crít / Dup)</th>
+                                        <th>Estado / Trabajo</th>
                                         <th>Fecha Registro</th>
                                         <th style={{ textAlign: "center" }}>Acciones</th>
                                     </tr>
@@ -1198,7 +1800,7 @@ const Questions = () => {
                                 <tbody>
                                     {isLoadingDocs ? (
                                         <tr>
-                                            <td colSpan="7" style={{ textAlign: "center", padding: "40px" }}>
+                                            <td colSpan="6" style={{ textAlign: "center", padding: "40px" }}>
                                                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
                                                     <span className="qst-spinner"></span>
                                                     <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
@@ -1208,7 +1810,11 @@ const Questions = () => {
                                             </td>
                                         </tr>
                                     ) : documents.length > 0 ? (
-                                        documents.map((doc) => (
+                                        documents.map((doc) => {
+                                            const summary = doc.iqpe_summary || {};
+                                            const job = doc.latest_job;
+                                            const effectiveStatus = job?.status || doc.status;
+                                            return (
                                             <tr key={doc.id}>
                                                 {/* Título */}
                                                 <td>
@@ -1217,53 +1823,72 @@ const Questions = () => {
                                                         <div>
                                                             <div style={{ fontWeight: 600, color: "#f8fafc" }}>{doc.title}</div>
                                                             <div style={{ fontSize: "0.72rem", color: "#64748b", fontFamily: "monospace" }}>
-                                                                {doc.id.substring(0, 18)}...
+                                                                {doc.id.substring(0, 18)}... • {doc.exam_type || "Saber 11"}
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </td>
 
-                                                {/* Año */}
+                                                {/* Año y Respuestas */}
                                                 <td>
-                                                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>
+                                                    <div style={{ fontWeight: 600, color: "#cbd5e1", fontSize: "0.84rem" }}>
                                                         {doc.year || "N/A"}
-                                                    </span>
-                                                </td>
-
-                                                {/* Convocatoria */}
-                                                <td>
-                                                    <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                                                        {doc.exam_type || "Saber 11"}
-                                                    </span>
-                                                </td>
-
-                                                {/* Respuestas */}
-                                                <td>
+                                                    </div>
                                                     {doc.has_answer_key ? (
-                                                        <span style={{ color: "#22c55e", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                                                        <span style={{ color: "#22c55e", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                                             <i className="fa-solid fa-check"></i> Con Clave
                                                         </span>
                                                     ) : (
-                                                        <span style={{ color: "#64748b", fontSize: "0.82rem" }}>Sin Clave</span>
+                                                        <span style={{ color: "#64748b", fontSize: "0.75rem" }}>Sin Clave</span>
                                                     )}
                                                 </td>
 
-                                                {/* Estado */}
+                                                {/* Métricas IQPE */}
+                                                <td>
+                                                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", fontSize: "0.74rem" }}>
+                                                        <span className="qst-iqpe-pill qst-iqpe-pill--blue" title="Total extraídas">
+                                                            {summary.total_extracted ?? 0} Ext
+                                                        </span>
+                                                        <span className="qst-iqpe-pill qst-iqpe-pill--green" title="Verificadas">
+                                                            {summary.verified_count ?? 0} Verif
+                                                        </span>
+                                                        <span className="qst-iqpe-pill qst-iqpe-pill--amber" title="Requieren revisión">
+                                                            {summary.requires_review_count ?? 0} Rev
+                                                        </span>
+                                                        {(summary.critical_issues_count || 0) > 0 && (
+                                                            <span className="qst-iqpe-pill qst-iqpe-pill--red" title="Problemas críticos">
+                                                                {summary.critical_issues_count} Crít
+                                                            </span>
+                                                        )}
+                                                        {(summary.duplicate_risk_count || 0) > 0 && (
+                                                            <span className="qst-iqpe-pill qst-iqpe-pill--purple" title="Posibles duplicados">
+                                                                {summary.duplicate_risk_count} Dup
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {/* Estado y Error de Trabajo */}
                                                 <td>
                                                     <span
                                                         className={`qst-doc-badge ${
-                                                            doc.status === "extracted"
+                                                            effectiveStatus === "extracted" || effectiveStatus === "completed"
                                                                 ? "qst-doc-badge--extracted"
-                                                                : doc.status === "uploaded"
+                                                                : effectiveStatus === "uploaded" || effectiveStatus === "queued"
                                                                 ? "qst-doc-badge--uploaded"
-                                                                : doc.status === "processing"
+                                                                : ["processing", "extracting", "solving_round_1", "solving_round_2", "verifying", "solving_round_3", "auditing"].includes(effectiveStatus)
                                                                 ? "qst-doc-badge--processing"
                                                                 : "qst-doc-badge--failed"
                                                         }`}
                                                     >
                                                         <span className="qst-status-dot"></span>
-                                                        {doc.status}
+                                                        {effectiveStatus}{job?.run_number ? ` (#${job.run_number})` : ""}
                                                     </span>
+                                                    {job?.error_log && (
+                                                        <div style={{ fontSize: "0.7rem", color: "#fca5a5", marginTop: "4px", maxWidth: "220px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={job.error_log}>
+                                                            Error: {job.error_log}
+                                                        </div>
+                                                    )}
                                                 </td>
 
                                                 {/* Fecha */}
@@ -1280,9 +1905,20 @@ const Questions = () => {
                                                 {/* Acciones */}
                                                 <td>
                                                     <div className="qst-actions-cell" style={{ justifyContent: "center" }}>
+                                                        {effectiveStatus === "failed" && (
+                                                            <button
+                                                                className="qst-action-btn"
+                                                                title="Reintentar trabajo IQPE fallido"
+                                                                type="button"
+                                                                onClick={() => handleRetryDocRow(doc)}
+                                                                style={{ color: "#f87171", borderColor: "rgba(239, 68, 68, 0.4)" }}
+                                                            >
+                                                                <i className="fa-solid fa-rotate-right"></i>
+                                                            </button>
+                                                        )}
                                                         <button
                                                             className="qst-action-btn"
-                                                            title="Extraer o revisar con Gemini"
+                                                            title="Ver procesamiento y preguntas extraídas"
                                                             type="button"
                                                             onClick={() => handleGoToExtraction(doc)}
                                                             style={{ color: "#c084fc", borderColor: "rgba(168, 85, 247, 0.35)" }}
@@ -1316,10 +1952,11 @@ const Questions = () => {
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))
+                                            );
+                                        })
                                     ) : (
                                         <tr>
-                                            <td colSpan="7">
+                                            <td colSpan="6">
                                                 <div className="qst-empty-state">
                                                     <i className="fa-solid fa-folder-open"></i>
                                                     <p>No se encontraron cuadernillos en el banco.</p>
@@ -1488,6 +2125,26 @@ const Questions = () => {
                                 </select>
                             </div>
 
+                            <div className="qst-select-wrap">
+                                <label className="qst-select-label" htmlFor="filter-bank-perpage">
+                                    Mostrar:
+                                </label>
+                                <select
+                                    id="filter-bank-perpage"
+                                    className="qst-select"
+                                    value={bankPerPage}
+                                    onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        setBankPerPage(val);
+                                        setBankPage(1);
+                                    }}
+                                >
+                                    <option value={10}>10 por página</option>
+                                    <option value={20}>20 por página</option>
+                                    <option value={50}>Todas (50 por página)</option>
+                                </select>
+                            </div>
+
                             <button
                                 className="qst-btn-excel"
                                 onClick={() => fetchBankQuestions(bankPage)}
@@ -1501,8 +2158,112 @@ const Questions = () => {
                         </div>
                     </section>
 
-                    {/* LISTADO DE PREGUNTAS REALES */}
+                    {/* LISTADO DE PREGUNTAS REALES CON PAGINACIÓN Y ESTÍMULOS COMPARTIDOS */}
                     <section className="qst-table-card">
+                        {/* BARRA SUPERIOR DE PAGINACIÓN Y CONTROLES DE PÁGINA */}
+                        {bankQuestions.length > 0 && (
+                            <div
+                                className="qst-table-footer"
+                                style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    flexWrap: "wrap",
+                                    gap: "12px",
+                                    borderTop: "none",
+                                    borderBottom: "1px solid var(--qst-border)",
+                                    background: "rgba(15, 23, 42, 0.55)",
+                                }}
+                            >
+                                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                                    <span>
+                                        Mostrando reactivos{" "}
+                                        <strong>
+                                            {bankPagination.from ?? 1}–{bankPagination.to ?? bankQuestions.length}
+                                        </strong>{" "}
+                                        de <strong>{bankPagination.total}</strong> en orden oficial (Pregunta #
+                                        {bankQuestions[0]?.order_in_group ?? 1} a #
+                                        {bankQuestions[bankQuestions.length - 1]?.order_in_group ?? bankQuestions.length})
+                                    </span>
+                                    <div style={{ display: "flex", gap: "6px" }}>
+                                        <button
+                                            type="button"
+                                            className="qst-btn-outline"
+                                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                                            onClick={() => setExpandedBankIds(new Set(bankQuestions.map((q) => q.id)))}
+                                        >
+                                            <i className="fa-solid fa-angles-down"></i> Expandir Opciones
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="qst-btn-outline"
+                                            style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                                            onClick={() => setExpandedBankIds(new Set())}
+                                        >
+                                            <i className="fa-solid fa-angles-up"></i> Colapsar Opciones
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
+                                        disabled={bankPagination.current_page <= 1 || isLoadingBank}
+                                        onClick={() => fetchBankQuestions(bankPagination.current_page - 1)}
+                                    >
+                                        <i className="fa-solid fa-chevron-left"></i> Anterior
+                                    </button>
+
+                                    {Array.from({ length: bankPagination.last_page || 1 }, (_, i) => i + 1).map((pageNum) => {
+                                        const isCurrent = pageNum === bankPagination.current_page;
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                type="button"
+                                                disabled={isLoadingBank}
+                                                onClick={() => fetchBankQuestions(pageNum)}
+                                                style={{
+                                                    minWidth: "32px",
+                                                    height: "30px",
+                                                    padding: "0 8px",
+                                                    borderRadius: "6px",
+                                                    fontSize: "0.8rem",
+                                                    fontWeight: 700,
+                                                    cursor: isLoadingBank ? "not-allowed" : "pointer",
+                                                    border: isCurrent
+                                                        ? "1px solid #22c55e"
+                                                        : "1px solid rgba(148, 163, 184, 0.25)",
+                                                    background: isCurrent
+                                                        ? "rgba(34, 197, 94, 0.2)"
+                                                        : "rgba(15, 23, 42, 0.6)",
+                                                    color: isCurrent ? "#4ade80" : "#cbd5e1",
+                                                }}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
+                                        disabled={bankPagination.current_page >= bankPagination.last_page || isLoadingBank}
+                                        onClick={() => fetchBankQuestions(bankPagination.current_page + 1)}
+                                    >
+                                        Siguiente <i className="fa-solid fa-chevron-right"></i>
+                                    </button>
+
+                                    <span style={{ fontSize: "0.8rem", color: "#94a3b8", marginLeft: "4px" }}>
+                                        Página <strong>{bankPagination.current_page}</strong> de{" "}
+                                        <strong>{bankPagination.last_page}</strong>
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
                         {isLoadingBank ? (
                             <div style={{ textAlign: "center", padding: "60px 20px" }}>
                                 <span className="qst-spinner" style={{ width: "36px", height: "36px", borderWidth: "3px" }}></span>
@@ -1511,41 +2272,84 @@ const Questions = () => {
                                 </p>
                             </div>
                         ) : bankQuestions.length > 0 ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px" }}>
-                                {bankQuestions.map((q) => {
-                                    const isExpanded = expandedBankIds.has(q.id);
-                                    return (
-                                        <div key={q.id}>
-                                            <QuestionCardItem
-                                                q={q}
-                                                isExpanded={isExpanded}
-                                                onToggleExpand={() => toggleBankExpand(q.id)}
-                                                onEdit={handleOpenEdit}
-                                                onApprove={handleApprove}
-                                                onReject={handlePromptReject}
-                                                isProcessingAction={actionLoadingId === q.id}
-                                            />
-                                            {/* Si tiene estímulo asociado y está expandido, mostrar vista previa del estímulo */}
-                                            {isExpanded && q.stimulus && (
-                                                <div style={{ marginTop: "8px", marginLeft: "12px", padding: "10px 14px", background: "rgba(59, 130, 246, 0.06)", borderLeft: "3px solid #3b82f6", borderRadius: "0 8px 8px 0", fontSize: "0.82rem" }}>
-                                                    <div style={{ color: "#60a5fa", fontWeight: 700, marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                                                        <i className="fa-solid fa-file-lines"></i>
-                                                        <span>Estímulo Asociado: {q.stimulus.title}</span>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "22px", padding: "18px" }}>
+                                {groupedBankBlocks.map((block, bIdx) => {
+                                    if (block.type === "stimulus") {
+                                        const stim = block.stimulus;
+                                        return (
+                                            <div key={`bank-stim-${stim.id}-${bIdx}`} className="qst-stimulus-container">
+                                                <div className="qst-stimulus-header">
+                                                    <div className="qst-stimulus-title-box">
+                                                        <i className="fa-solid fa-book-open-reader"></i>
+                                                        <div>
+                                                            <h3 className="qst-stimulus-title">
+                                                                {stim.title || "Estímulo de Lectura Compartido"}
+                                                            </h3>
+                                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                                                                Estímulo compartido • Pregunta(s) en esta página:{" "}
+                                                                {block.questions.map((q) => `#${q.order_in_group || "?"}`).join(", ")}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    {q.stimulus.instructions && (
-                                                        <div style={{ color: "#cbd5e1", fontStyle: "italic", marginBottom: "4px" }}>
-                                                            {q.stimulus.instructions}
-                                                        </div>
-                                                    )}
-                                                    {q.stimulus.content_text && (
-                                                        <div style={{ color: "#94a3b8", maxHeight: "100px", overflowY: "auto", lineHeight: "1.4" }}>
-                                                            {q.stimulus.content_text}
-                                                        </div>
-                                                    )}
-                                                    <StimulusMedia stimulus={q.stimulus} />
+                                                    <span className="qst-stimulus-badge-count">
+                                                        <i className="fa-solid fa-link"></i>
+                                                        {block.questions.length} reactivo(s) en vista
+                                                    </span>
                                                 </div>
-                                            )}
-                                        </div>
+
+                                                {stim.instructions && (
+                                                    <div className="qst-stimulus-instructions">
+                                                        <i className="fa-solid fa-circle-info"></i>
+                                                        <span>{stim.instructions}</span>
+                                                    </div>
+                                                )}
+
+                                                {stim.content_text && (
+                                                    <div className="qst-stimulus-content-box">
+                                                        {stim.content_text}
+                                                    </div>
+                                                )}
+
+                                                <div style={{ padding: "0 4px 8px" }}>
+                                                    <StimulusMedia stimulus={stim} />
+                                                </div>
+
+                                                <div className="qst-stimulus-questions-list">
+                                                    {block.questions.map((q) => (
+                                                        <QuestionCardItem
+                                                            key={q.id}
+                                                            q={q}
+                                                            isExpanded={expandedBankIds.has(q.id)}
+                                                            onToggleExpand={() => toggleBankExpand(q.id)}
+                                                            onEdit={handleOpenEdit}
+                                                            onApprove={handleApprove}
+                                                            onReject={handlePromptReject}
+                                                            onOpenDetail={handleOpenIqpeDetail}
+                                                            onPublish={handleRequestPublish}
+                                                            onReturnToReview={handleRequestReturnToReview}
+                                                            isProcessingAction={actionLoadingId === q.id}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    const q = block.question;
+                                    return (
+                                        <QuestionCardItem
+                                            key={q.id}
+                                            q={q}
+                                            isExpanded={expandedBankIds.has(q.id)}
+                                            onToggleExpand={() => toggleBankExpand(q.id)}
+                                            onEdit={handleOpenEdit}
+                                            onApprove={handleApprove}
+                                            onReject={handlePromptReject}
+                                            onOpenDetail={handleOpenIqpeDetail}
+                                            onPublish={handleRequestPublish}
+                                            onReturnToReview={handleRequestReturnToReview}
+                                            isProcessingAction={actionLoadingId === q.id}
+                                        />
                                     );
                                 })}
                             </div>
@@ -1596,32 +2400,70 @@ const Questions = () => {
                         {/* PIE DE TABLA Y PAGINACIÓN REAL */}
                         <div className="qst-table-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                             <span>
-                                Mostrando <strong>{bankQuestions.length}</strong> de <strong>{bankPagination.total}</strong> reactivos registrados en Supabase
+                                Mostrando{" "}
+                                <strong>
+                                    {bankPagination.from ?? (bankQuestions.length > 0 ? 1 : 0)}–
+                                    {bankPagination.to ?? bankQuestions.length}
+                                </strong>{" "}
+                                de <strong>{bankPagination.total}</strong> reactivos registrados en Supabase
                             </span>
 
-                            {bankPagination.last_page > 1 && (
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            {bankPagination.last_page >= 1 && bankPagination.total > 0 && (
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                                     <button
                                         type="button"
                                         className="qst-btn-outline"
-                                        style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
                                         disabled={bankPagination.current_page <= 1 || isLoadingBank}
                                         onClick={() => fetchBankQuestions(bankPagination.current_page - 1)}
                                     >
                                         <i className="fa-solid fa-chevron-left"></i> Anterior
                                     </button>
-                                    <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>
-                                        Página <strong>{bankPagination.current_page}</strong> de <strong>{bankPagination.last_page}</strong>
-                                    </span>
+
+                                    {Array.from({ length: bankPagination.last_page || 1 }, (_, i) => i + 1).map((pageNum) => {
+                                        const isCurrent = pageNum === bankPagination.current_page;
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                type="button"
+                                                disabled={isLoadingBank}
+                                                onClick={() => fetchBankQuestions(pageNum)}
+                                                style={{
+                                                    minWidth: "32px",
+                                                    height: "30px",
+                                                    padding: "0 8px",
+                                                    borderRadius: "6px",
+                                                    fontSize: "0.8rem",
+                                                    fontWeight: 700,
+                                                    cursor: isLoadingBank ? "not-allowed" : "pointer",
+                                                    border: isCurrent
+                                                        ? "1px solid #22c55e"
+                                                        : "1px solid rgba(148, 163, 184, 0.25)",
+                                                    background: isCurrent
+                                                        ? "rgba(34, 197, 94, 0.2)"
+                                                        : "rgba(15, 23, 42, 0.6)",
+                                                    color: isCurrent ? "#4ade80" : "#cbd5e1",
+                                                }}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+
                                     <button
                                         type="button"
                                         className="qst-btn-outline"
-                                        style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+                                        style={{ padding: "5px 10px", fontSize: "0.8rem" }}
                                         disabled={bankPagination.current_page >= bankPagination.last_page || isLoadingBank}
                                         onClick={() => fetchBankQuestions(bankPagination.current_page + 1)}
                                     >
                                         Siguiente <i className="fa-solid fa-chevron-right"></i>
                                     </button>
+
+                                    <span style={{ fontSize: "0.82rem", color: "#94a3b8", marginLeft: "4px" }}>
+                                        Página <strong>{bankPagination.current_page}</strong> de{" "}
+                                        <strong>{bankPagination.last_page}</strong>
+                                    </span>
                                 </div>
                             )}
                         </div>
@@ -1705,7 +2547,7 @@ const Questions = () => {
                                 </select>
                             </div>
 
-                            <div className="qst-extraction-actions">
+                            <div className="qst-extraction-actions" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                                 <button
                                     type="button"
                                     className="qst-btn-gemini-extract"
@@ -1716,13 +2558,13 @@ const Questions = () => {
                                     {isExtracting ? (
                                         <>
                                             <span className="qst-spinner" style={{ width: "16px", height: "16px", borderWidth: "2px" }}></span>
-                                            <span>Extrayendo con Gemini...</span>
+                                            <span>{iqpeJobData?.progress || "Procesando en segundo plano..."}</span>
                                         </>
                                     ) : (
                                         <>
                                             <i className="fa-solid fa-bolt-lightning"></i>
                                             <span>
-                                                {selectedExtractionDocObj?.status === "extracted"
+                                                {(selectedExtractionDocObj?.status === "extracted" || iqpeJobData?.status === "completed")
                                                     ? "Re-extraer con Gemini"
                                                     : "Extraer preguntas con Gemini"}
                                             </span>
@@ -1730,11 +2572,62 @@ const Questions = () => {
                                     )}
                                 </button>
 
+                                {/* Botón para reintentar o reanudar resoluciones sin volver a subir el PDF */}
+                                {((selectedExtractionDocObj?.status === "failed" || iqpeJobData?.status === "failed") && !isExtracting) && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRetryProcessing()}
+                                            style={{
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: "8px",
+                                                background: "rgba(239, 68, 68, 0.15)",
+                                                color: "#f87171",
+                                                border: "1px solid rgba(239, 68, 68, 0.35)",
+                                                padding: "9px 16px",
+                                                borderRadius: "8px",
+                                                cursor: "pointer",
+                                                fontWeight: 700,
+                                                fontSize: "0.85rem",
+                                            }}
+                                            title="Reintentar procesamiento IQPE sin volver a subir el documento"
+                                        >
+                                            <i className="fa-solid fa-rotate-right"></i>
+                                            <span>Reintentar procesamiento</span>
+                                        </button>
+
+                                        {extractedQuestions.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={handleRetryResolutionsOnly}
+                                                style={{
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: "8px",
+                                                    background: "rgba(245, 158, 11, 0.15)",
+                                                    color: "#fbbf24",
+                                                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                                                    padding: "9px 16px",
+                                                    borderRadius: "8px",
+                                                    cursor: "pointer",
+                                                    fontWeight: 700,
+                                                    fontSize: "0.85rem",
+                                                }}
+                                                title="Reanudar solo resoluciones R1/R2/R3 y verificación pendientes sin re-extraer"
+                                            >
+                                                <i className="fa-solid fa-play"></i>
+                                                <span>Reanudar Resoluciones</span>
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+
                                 <button
                                     type="button"
                                     className="qst-btn-refresh-data"
                                     onClick={() => loadExtractionData(selectedExtractionDocId)}
-                                    disabled={!selectedExtractionDocId || isExtracting || isLoadingExtractionData}
+                                    disabled={!selectedExtractionDocId || isLoadingExtractionData}
                                     title="Actualizar estado y preguntas"
                                 >
                                     <i className={`fa-solid fa-arrows-rotate ${isLoadingExtractionData ? "fa-spin" : ""}`}></i>
@@ -1742,28 +2635,60 @@ const Questions = () => {
                             </div>
                         </div>
 
-                        {/* KPIS DE ESTADO DE EXTRACCIÓN */}
+                        {/* KPIS DE ESTADO DE EXTRACCIÓN Y AUDITORÍA DE CALIDAD */}
                         {selectedExtractionDocId && (
                             <div className="qst-extraction-kpis">
-                                {/* KPI 1: Estado del Documento */}
+                                {/* KPI 1: Documento y Estado de Procesamiento */}
                                 <div className="qst-extraction-kpi-card">
-                                    <div>
-                                        <div className="qst-extraction-kpi-label">Estado de Procesamiento</div>
-                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "1rem", marginTop: "4px" }}>
+                                    <div style={{ overflow: "hidden" }}>
+                                        <div className="qst-extraction-kpi-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                            <span>Estado IQPE</span>
+                                            {iqpeJobData?.run_number > 0 && (
+                                                <span style={{ fontSize: "0.68rem", background: "rgba(148, 163, 184, 0.2)", padding: "1px 6px", borderRadius: "4px", color: "#94a3b8" }}>
+                                                    Corrida #{iqpeJobData.run_number}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "0.95rem", marginTop: "4px" }}>
                                             <span
                                                 className={`qst-doc-badge ${
-                                                    (extractionStatusData?.status || selectedExtractionDocObj?.status) === "extracted"
+                                                    (iqpeJobData?.status || extractionStatusData?.status || selectedExtractionDocObj?.status) === "completed" || (selectedExtractionDocObj?.status === "extracted")
                                                         ? "qst-doc-badge--extracted"
-                                                        : (extractionStatusData?.status || selectedExtractionDocObj?.status) === "uploaded"
+                                                        : (iqpeJobData?.status || extractionStatusData?.status || selectedExtractionDocObj?.status) === "uploaded" || (iqpeJobData?.status === "queued")
                                                         ? "qst-doc-badge--uploaded"
-                                                        : (extractionStatusData?.status || selectedExtractionDocObj?.status) === "processing"
+                                                        : ["extracting", "solving_round_1", "solving_round_2", "verifying", "solving_round_3", "auditing", "processing"].includes(iqpeJobData?.status || extractionStatusData?.status || selectedExtractionDocObj?.status)
                                                         ? "qst-doc-badge--processing"
                                                         : "qst-doc-badge--failed"
                                                 }`}
                                             >
                                                 <span className="qst-status-dot"></span>
-                                                {extractionStatusData?.status || selectedExtractionDocObj?.status || "Desconocido"}
+                                                {iqpeJobData?.status || extractionStatusData?.status || selectedExtractionDocObj?.status || "Desconocido"}
                                             </span>
+                                        </div>
+                                        <div
+                                            style={{
+                                                fontSize: "0.72rem",
+                                                color: (iqpeJobData?.status === "failed") ? "#f87171" : "#94a3b8",
+                                                marginTop: "4px",
+                                                lineHeight: "1.2",
+                                            }}
+                                            title={iqpeJobData?.progress || selectedExtractionDocObj?.title}
+                                        >
+                                            {iqpeJobData?.progress || selectedExtractionDocObj?.title || "Sin actividad"}
+                                        </div>
+                                        <div
+                                            style={{
+                                                fontSize: "0.74rem",
+                                                color: "#94a3b8",
+                                                marginTop: "4px",
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                maxWidth: "150px",
+                                            }}
+                                            title={selectedExtractionDocObj?.title}
+                                        >
+                                            {selectedExtractionDocObj?.title || "Sin título"}
                                         </div>
                                     </div>
                                     <div className="qst-extraction-kpi-icon" style={{ background: "rgba(168, 85, 247, 0.15)", color: "#c084fc" }}>
@@ -1771,43 +2696,200 @@ const Questions = () => {
                                     </div>
                                 </div>
 
-                                {/* KPI 2: Modelo IA Utilizado */}
+                                {/* KPI 2: Área Detectada */}
                                 <div className="qst-extraction-kpi-card">
                                     <div>
-                                        <div className="qst-extraction-kpi-label">Motor de Inferencia</div>
-                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "0.92rem", color: "#38bdf8" }}>
-                                            {extractionStatusData?.extraction_metadata?.model || "Pendiente de inferencia"}
+                                        <div className="qst-extraction-kpi-label">Área Detectada</div>
+                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "1.05rem", color: "#38bdf8" }}>
+                                            {qualityAudit?.detected_subject || (selectedExtractionDocObj?.subject_id === 1 ? "Lectura Crítica" : selectedExtractionDocObj?.subject_id === 2 ? "Matemáticas" : "General ICFES")}
+                                        </div>
+                                        <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "2px" }}>
+                                            {selectedExtractionDocObj?.exam_type || "Saber 11"} ({selectedExtractionDocObj?.year || "2026"})
                                         </div>
                                     </div>
                                     <div className="qst-extraction-kpi-icon" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
-                                        <i className="fa-solid fa-microchip"></i>
+                                        <i className="fa-solid fa-graduation-cap"></i>
                                     </div>
                                 </div>
 
-                                {/* KPI 3: Preguntas Extraídas */}
+                                {/* KPI 3: Total Preguntas Extraídas */}
                                 <div className="qst-extraction-kpi-card">
                                     <div>
-                                        <div className="qst-extraction-kpi-label">Preguntas en Borrador</div>
+                                        <div className="qst-extraction-kpi-label">Total Preguntas</div>
                                         <div className="qst-extraction-kpi-val">
-                                            {extractionStatusData?.questions_count ?? extractedQuestions.length}
+                                            {qualityAudit?.total_questions ?? extractedQuestions.length}
+                                        </div>
+                                        <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "2px" }}>
+                                            Reactivos en documento
+                                        </div>
+                                    </div>
+                                    <div className="qst-extraction-kpi-icon" style={{ background: "rgba(96, 165, 250, 0.15)", color: "#60a5fa" }}>
+                                        <i className="fa-solid fa-list-ol"></i>
+                                    </div>
+                                </div>
+
+                                {/* KPI 4: Listas para Aprobación */}
+                                <div className="qst-extraction-kpi-card">
+                                    <div>
+                                        <div className="qst-extraction-kpi-label">Listas para Aprobación</div>
+                                        <div className="qst-extraction-kpi-val" style={{ color: "#4ade80" }}>
+                                            {qualityAudit?.ready_for_approval_count ?? auditCounts.ready}
+                                        </div>
+                                        <div style={{ fontSize: "0.72rem", color: "#4ade80", marginTop: "2px" }}>
+                                            Sin observaciones pendientes
                                         </div>
                                     </div>
                                     <div className="qst-extraction-kpi-icon" style={{ background: "rgba(34, 197, 94, 0.15)", color: "#22c55e" }}>
-                                        <i className="fa-solid fa-list-check"></i>
+                                        <i className="fa-solid fa-circle-check"></i>
                                     </div>
                                 </div>
 
-                                {/* KPI 4: Estímulos Creados */}
+                                {/* KPI 5: Con Observaciones o Anomalías */}
                                 <div className="qst-extraction-kpi-card">
                                     <div>
-                                        <div className="qst-extraction-kpi-label">Estímulos / Textos</div>
-                                        <div className="qst-extraction-kpi-val">
-                                            {extractionStatusData?.extraction_metadata?.stimuli_created ?? groupedExtraction.stimuliGroups.length}
+                                        <div className="qst-extraction-kpi-label">Con Observaciones</div>
+                                        <div
+                                            className="qst-extraction-kpi-val"
+                                            style={{ color: (qualityAudit?.requires_review_count ?? auditCounts.issues) > 0 ? "#fbbf24" : "#94a3b8" }}
+                                        >
+                                            {qualityAudit?.requires_review_count ?? auditCounts.issues}
+                                        </div>
+                                        <div style={{ fontSize: "0.72rem", color: (qualityAudit?.requires_review_count ?? auditCounts.issues) > 0 ? "#fbbf24" : "#64748b", marginTop: "2px" }}>
+                                            {(qualityAudit?.requires_review_count ?? auditCounts.issues) > 0 ? "Requieren calibración" : "0 anomalías"}
                                         </div>
                                     </div>
-                                    <div className="qst-extraction-kpi-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
-                                        <i className="fa-solid fa-book-open"></i>
+                                    <div
+                                        className="qst-extraction-kpi-icon"
+                                        style={{
+                                            background: (qualityAudit?.requires_review_count ?? auditCounts.issues) > 0 ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.1)",
+                                            color: (qualityAudit?.requires_review_count ?? auditCounts.issues) > 0 ? "#f59e0b" : "#94a3b8",
+                                        }}
+                                    >
+                                        <i className="fa-solid fa-triangle-exclamation"></i>
                                     </div>
+                                </div>
+
+                                {/* KPI 6: Claves Oficiales Verificadas vs No Verificadas */}
+                                <div className="qst-extraction-kpi-card">
+                                    <div>
+                                        <div className="qst-extraction-kpi-label">Claves Oficiales</div>
+                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "1.1rem" }}>
+                                            {qualityAudit?.verified_keys_count ?? auditCounts.verifiedKeys} / {qualityAudit?.total_questions ?? extractedQuestions.length}
+                                        </div>
+                                        <div style={{ fontSize: "0.72rem", color: qualityAudit?.has_official_answer_key ? "#4ade80" : "#94a3b8", marginTop: "2px" }}>
+                                            {qualityAudit?.has_official_answer_key ? "Tabla oficial PDF validada" : "Claves pedagógicas"}
+                                        </div>
+                                    </div>
+                                    <div className="qst-extraction-kpi-icon" style={{ background: "rgba(52, 211, 153, 0.15)", color: "#34d399" }}>
+                                        <i className="fa-solid fa-key"></i>
+                                    </div>
+                                </div>
+
+                                {/* KPI 7: Críticas & Duplicados + Estímulos */}
+                                <div className="qst-extraction-kpi-card">
+                                    <div>
+                                        <div className="qst-extraction-kpi-label">Críticas & Duplicados</div>
+                                        <div className="qst-extraction-kpi-val" style={{ fontSize: "1.05rem", color: (iqpeJobData?.quality_audit_summary?.critical_issues_count || iqpeJobData?.quality_audit_summary?.duplicate_risk_count) ? "#fca5a5" : "#4ade80" }}>
+                                            {iqpeJobData?.quality_audit_summary?.critical_issues_count ?? 0} Crít • {iqpeJobData?.quality_audit_summary?.duplicate_risk_count ?? 0} Dup
+                                        </div>
+                                        <div style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: "2px" }}>
+                                            {qualityAudit?.stimuli_count ?? groupedExtraction.stimuliGroups.length} Est • {qualityAudit?.media_assets_count ?? (docMedia?.confirmed?.length || 0)} Rec
+                                        </div>
+                                    </div>
+                                    <div className="qst-extraction-kpi-icon" style={{ background: "rgba(249, 115, 22, 0.15)", color: "#f97316" }}>
+                                        <i className="fa-solid fa-shield-halved"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* BANNER DE AUDITORÍA AUTOMÁTICA Y FILTROS DE CALIDAD */}
+                        {selectedExtractionDocId && extractedQuestions.length > 0 && (
+                            <div className="qst-audit-banner">
+                                <div className="qst-audit-banner-header">
+                                    <div className="qst-audit-banner-title">
+                                        <i className="fa-solid fa-shield-halved" style={{ color: "#38bdf8" }}></i>
+                                        <span>Auditoría Automática de Calidad Multimodal</span>
+                                        {qualityAudit?.status === "completed" && (
+                                            <span className="qst-audit-badge-ready" style={{ marginLeft: "8px" }}>
+                                                <i className="fa-solid fa-circle-check"></i> Auditoría Superada
+                                            </span>
+                                        )}
+                                        {(qualityAudit?.requires_review_count ?? auditCounts.issues) > 0 && (
+                                            <span className="qst-audit-badge-review" style={{ marginLeft: "8px" }}>
+                                                <i className="fa-solid fa-triangle-exclamation"></i> Requiere Atención ({qualityAudit?.requires_review_count ?? auditCounts.issues})
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                        <button
+                                            type="button"
+                                            className="qst-btn-outline"
+                                            onClick={handleRunAudit}
+                                            disabled={isRunningAudit || isExtracting}
+                                            title="Ejecutar revalidación automática de calidad sobre las preguntas extraídas"
+                                        >
+                                            <i className={`fa-solid fa-arrows-rotate ${isRunningAudit ? "fa-spin" : ""}`}></i>
+                                            <span>{isRunningAudit ? "Auditando..." : "Re-auditar Calidad"}</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Fila de Filtros y Acción Rápida de Selección */}
+                                <div className="qst-audit-filters-row">
+                                    <div className="qst-audit-filter-group">
+                                        <span style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 700 }}>
+                                            Filtrar Vista:
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={`qst-audit-filter-btn ${auditFilter === "all" ? "qst-audit-filter-btn--active" : ""}`}
+                                            onClick={() => setAuditFilter("all")}
+                                        >
+                                            <i className="fa-solid fa-list"></i>
+                                            <span>Todas ({extractedQuestions.length})</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`qst-audit-filter-btn ${auditFilter === "ready" ? "qst-audit-filter-btn--active" : ""}`}
+                                            onClick={() => setAuditFilter("ready")}
+                                            style={auditFilter === "ready" ? { color: "#4ade80", borderColor: "#4ade80" } : {}}
+                                        >
+                                            <i className="fa-solid fa-circle-check" style={{ color: "#4ade80" }}></i>
+                                            <span>Listas para Aprobación ({auditCounts.ready})</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`qst-audit-filter-btn ${auditFilter === "issues" ? "qst-audit-filter-btn--active" : ""}`}
+                                            onClick={() => setAuditFilter("issues")}
+                                            style={auditFilter === "issues" ? { color: "#fbbf24", borderColor: "#fbbf24" } : {}}
+                                        >
+                                            <i className="fa-solid fa-triangle-exclamation" style={{ color: "#fbbf24" }}></i>
+                                            <span>Con Observaciones ({auditCounts.issues})</span>
+                                        </button>
+                                    </div>
+
+                                    {auditCounts.ready > 0 && (
+                                        <div>
+                                            <button
+                                                type="button"
+                                                className="qst-btn-outline"
+                                                onClick={handleSelectOnlyReady}
+                                                style={{
+                                                    background: "rgba(34, 197, 94, 0.12)",
+                                                    borderColor: "rgba(34, 197, 94, 0.4)",
+                                                    color: "#4ade80",
+                                                    fontWeight: 700,
+                                                    padding: "7px 14px",
+                                                }}
+                                                title="Selecciona automáticamente todas las preguntas que pasaron la validación sin observaciones"
+                                            >
+                                                <i className="fa-solid fa-check-double"></i>
+                                                <span>Seleccionar {auditCounts.ready} listas para aprobación</span>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1817,7 +2899,10 @@ const Questions = () => {
                     <div className="qst-questions-toolbar">
                         <div className="qst-questions-toolbar-title">
                             <i className="fa-solid fa-layer-group" style={{ color: "#22c55e" }}></i>
-                            <span>Reactivos Extraídos ({extractedQuestions.length})</span>
+                            <span>
+                                Reactivos Extraídos ({filteredExtractedQuestions.length}
+                                {auditFilter !== "all" ? ` de ${extractedQuestions.length}` : ""})
+                            </span>
                             {selectedExtractionDocObj && (
                                 <span style={{ fontSize: "0.82rem", color: "#94a3b8", fontWeight: 400 }}>
                                     — {selectedExtractionDocObj.title}
@@ -1870,64 +2955,172 @@ const Questions = () => {
                         </div>
                     ) : extractedQuestions.length === 0 ? (
                         <div className="qst-ai-preview-card">
-                            <div className="qst-ai-preview-icon">
-                                <i className="fa-solid fa-file-circle-question"></i>
+                            <div className="qst-ai-preview-icon" style={selectedExtractionDocObj?.status === "failed" ? { background: "rgba(239, 68, 68, 0.15)", color: "#ef4444" } : {}}>
+                                <i className={selectedExtractionDocObj?.status === "failed" ? "fa-solid fa-triangle-exclamation" : "fa-solid fa-file-circle-question"}></i>
                             </div>
                             <h3 style={{ fontSize: "1.2rem", color: "#ffffff", margin: 0 }}>
                                 {selectedExtractionDocObj?.status === "extracted"
                                     ? "No se encontraron preguntas en este documento"
+                                    : selectedExtractionDocObj?.status === "failed"
+                                    ? "La extracción previa reportó un error"
                                     : "Documento listo para extracción"}
                             </h3>
                             <p style={{ color: "#94a3b8", fontSize: "0.88rem", maxWidth: "520px", lineHeight: 1.5, margin: 0 }}>
                                 {selectedExtractionDocObj?.status === "extracted"
                                     ? "La extracción finalizó pero el modelo no detectó preguntas válidas o el formato requiere calibración adicional."
+                                    : selectedExtractionDocObj?.status === "failed"
+                                    ? "El archivo PDF está almacenado de forma segura en Supabase Storage. Puedes reintentar la extracción directamente con el motor optimizado sin volver a subirlo."
                                     : "Haz clic en 'Extraer preguntas con Gemini' para iniciar el análisis automático y estructurar las preguntas oficiales del cuadernillo."}
                             </p>
+                            {selectedExtractionDocObj?.status === "failed" && extractionStatusData?.extraction_metadata?.error_detail && (
+                                <div style={{
+                                    marginTop: "12px",
+                                    padding: "10px 14px",
+                                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                                    borderRadius: "8px",
+                                    color: "#fca5a5",
+                                    fontSize: "0.82rem",
+                                    maxWidth: "560px",
+                                    textAlign: "left",
+                                    fontFamily: "monospace",
+                                    wordBreak: "break-word",
+                                }}>
+                                    <strong>Detalle técnico:</strong> {extractionStatusData.extraction_metadata.error_detail}
+                                </div>
+                            )}
                             {selectedExtractionDocObj?.status !== "extracted" && selectedExtractionDocId && (
                                 <button
                                     type="button"
                                     className="qst-btn-gemini-extract"
                                     onClick={handleTriggerExtraction}
-                                    style={{ marginTop: "8px" }}
+                                    style={{ marginTop: "12px" }}
                                 >
-                                    <i className="fa-solid fa-bolt-lightning"></i>
-                                    <span>Iniciar Extracción Ahora</span>
+                                    <i className={selectedExtractionDocObj?.status === "failed" ? "fa-solid fa-rotate-right" : "fa-solid fa-bolt-lightning"}></i>
+                                    <span>{selectedExtractionDocObj?.status === "failed" ? "Reintentar Extracción con Gemini" : "Iniciar Extracción Ahora"}</span>
                                 </button>
                             )}
                         </div>
                     ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-                            {docMedia?.extracted && docMedia.images?.length > 0 && (
-                                <div className="qst-stimulus-container">
-                                    <div className="qst-stimulus-header">
-                                        <div className="qst-stimulus-title-box">
-                                            <i className="fa-solid fa-images"></i>
-                                            <div>
-                                                <h3 className="qst-stimulus-title">Recursos visuales detectados en el PDF</h3>
-                                                <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                                                    Sin asociación segura a pregunta o estímulo: pendientes de revisión administrativa.
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <span className="qst-stimulus-badge-count">{docMedia.images.length} recursos</span>
-                                    </div>
-                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 14, padding: 12 }}>
-                                        {docMedia.images.map((img) => (
-                                            <div key={`${img.page}-${img.pdf_object}`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                                {img.storage_path ? (
-                                                    <MediaImage path={img.storage_path} alt={`Recurso visual, página ${img.page}`} maxHeight={200} />
-                                                ) : (
-                                                    <div className="qst-media-missing">Formato no soportado para extracción automática.</div>
-                                                )}
-                                                <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                                                    Página {img.page} · {img.width}×{img.height}px ·{" "}
-                                                    <span style={{ color: "#fbbf24" }}>pendiente de asociación</span>
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
+                            <MediaAssociationPanel
+                                docMedia={docMedia}
+                                extractedQuestions={extractedQuestions}
+                                onAssociationChanged={async () => {
+                                    await Promise.all([
+                                        fetchDocMedia(selectedExtractionDocId),
+                                        loadExtractionData(selectedExtractionDocId),
+                                        fetchBankQuestions(bankPage),
+                                    ]);
+                                }}
+                            />
+
+                            {/* BARRA DE APROBACIÓN MASIVA Y SELECCIÓN MÚLTIPLE (FASE 6) */}
+                            <div
+                                className="qst-bulk-approval-toolbar"
+                                style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 12,
+                                    padding: "14px 18px",
+                                    borderRadius: 12,
+                                    background: "rgba(15, 23, 42, 0.95)",
+                                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                                    boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
+                                }}
+                            >
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: "0.86rem", color: "#f8fafc", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                        <i className="fa-solid fa-list-check" style={{ color: "#38bdf8" }}></i>
+                                        Selección Múltiple:
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        onClick={handleSelectAll}
+                                        style={{ fontSize: "0.78rem", padding: "5px 12px", background: "rgba(56, 189, 248, 0.08)" }}
+                                        title="Marca todas las preguntas del documento para aprobación masiva"
+                                    >
+                                        <i className="fa-solid fa-check-double" style={{ color: "#38bdf8" }}></i>
+                                        <span>Seleccionar todas ({extractedQuestions.length})</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        onClick={handleDeselectAll}
+                                        style={{ fontSize: "0.78rem", padding: "5px 12px" }}
+                                        title="Quita todas las marcas de selección"
+                                    >
+                                        <i className="fa-solid fa-xmark"></i>
+                                        <span>Deseleccionar todas</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="qst-btn-outline"
+                                        onClick={handleSelectAllExceptExcluded}
+                                        style={{ fontSize: "0.78rem", padding: "5px 12px" }}
+                                        title="Invierte la selección actual para aprobar todas salvo las excluidas"
+                                    >
+                                        <i className="fa-solid fa-arrows-rotate"></i>
+                                        <span>Seleccionar excepto excluidas</span>
+                                    </button>
                                 </div>
-                            )}
+
+                                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                    <span
+                                        style={{
+                                            fontSize: "0.84rem",
+                                            fontWeight: 700,
+                                            color: selectedQuestionIds.size > 0 ? "#4ade80" : "#94a3b8",
+                                            background: selectedQuestionIds.size > 0 ? "rgba(34, 197, 94, 0.12)" : "rgba(148, 163, 184, 0.1)",
+                                            padding: "4px 10px",
+                                            borderRadius: 6,
+                                            border: selectedQuestionIds.size > 0 ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(148, 163, 184, 0.2)",
+                                        }}
+                                    >
+                                        {selectedQuestionIds.size} de {extractedQuestions.length} seleccionadas
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleBulkApprove}
+                                        disabled={selectedQuestionIds.size === 0 || isBulkApproving}
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: 8,
+                                            padding: "9px 20px",
+                                            background: selectedQuestionIds.size > 0 ? "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)" : "rgba(148, 163, 184, 0.2)",
+                                            color: selectedQuestionIds.size > 0 ? "#ffffff" : "#64748b",
+                                            border: selectedQuestionIds.size > 0 ? "1px solid #4ade80" : "1px solid rgba(148, 163, 184, 0.3)",
+                                            borderRadius: 8,
+                                            fontWeight: 800,
+                                            fontSize: "0.86rem",
+                                            cursor: selectedQuestionIds.size > 0 && !isBulkApproving ? "pointer" : "not-allowed",
+                                            boxShadow: selectedQuestionIds.size > 0 ? "0 4px 16px rgba(34, 197, 94, 0.4)" : "none",
+                                            transition: "all 0.2s ease",
+                                        }}
+                                        title={selectedQuestionIds.size === 0 ? "Selecciona una o más preguntas para aprobar" : "Aprobar todas las preguntas seleccionadas para el banco"}
+                                    >
+                                        {isBulkApproving ? (
+                                            <>
+                                                <span className="qst-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span>
+                                                <span>Aprobando masivamente...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="fa-solid fa-circle-check"></i>
+                                                <span>APROBAR TODAS LAS SELECCIONADAS ({selectedQuestionIds.size})</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
 
                             {/* 1. SECCIÓN DE ESTÍMULOS COMPARTIDOS */}
                             {groupedExtraction.stimuliGroups.map((group, groupIdx) => {
@@ -1979,7 +3172,13 @@ const Questions = () => {
                                                     onEdit={handleOpenEdit}
                                                     onApprove={handleApprove}
                                                     onReject={handlePromptReject}
+                                                    onOpenDetail={handleOpenIqpeDetail}
+                                                    onPublish={handleRequestPublish}
+                                                    onReturnToReview={handleRequestReturnToReview}
                                                     isProcessingAction={actionLoadingId === q.id}
+                                                    showCheckbox={true}
+                                                    isSelected={selectedQuestionIds.has(q.id)}
+                                                    onToggleSelect={handleToggleSelectQuestion}
                                                 />
                                             ))}
                                         </div>
@@ -2005,7 +3204,13 @@ const Questions = () => {
                                             onEdit={handleOpenEdit}
                                             onApprove={handleApprove}
                                             onReject={handlePromptReject}
+                                            onOpenDetail={handleOpenIqpeDetail}
+                                            onPublish={handleRequestPublish}
+                                            onReturnToReview={handleRequestReturnToReview}
                                             isProcessingAction={actionLoadingId === q.id}
+                                            showCheckbox={true}
+                                            isSelected={selectedQuestionIds.has(q.id)}
+                                            onToggleSelect={handleToggleSelectQuestion}
                                         />
                                     ))}
                                 </div>
@@ -2784,6 +3989,33 @@ const Questions = () => {
                                         disabled={isSavingEdit}
                                     ></textarea>
                                 </div>
+
+                                {/* Observación administrativa de trazabilidad / motivo de cambio de clave */}
+                                <div className="qst-form-group" style={{ background: "rgba(56, 189, 248, 0.06)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: "8px", padding: "12px" }}>
+                                    <label className="qst-form-label">
+                                        Observación Administrativa / Motivo de Cambio o Clave Manual
+                                    </label>
+                                    <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: "0 0 8px 0" }}>
+                                        Si asigna clave a una pregunta sin clave oficial o modifica una clave verificada existente, quedará registrado con su usuario y fecha (obligatorio cuando cambia una clave oficial existente).
+                                    </p>
+                                    <textarea
+                                        rows="2"
+                                        className="qst-form-textarea"
+                                        placeholder="Ej: Clave calibrada manualmente por comité académico / errata corregida..."
+                                        value={editForm.notes || ""}
+                                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                                        disabled={isSavingEdit}
+                                    ></textarea>
+                                    <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", cursor: "pointer", fontSize: "0.8rem", color: "#cbd5e1" }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(editForm.confirm_official_key)}
+                                            onChange={(e) => setEditForm({ ...editForm, confirm_official_key: e.target.checked })}
+                                            style={{ accentColor: "#38bdf8" }}
+                                        />
+                                        <span>Confirmar resolución de discrepancia manteniendo o calibrando la clave indicada</span>
+                                    </label>
+                                </div>
                             </div>
 
                             <div className="qst-modal-footer">
@@ -2819,70 +4051,146 @@ const Questions = () => {
             )}
 
             {/* =========================================================
-                MODAL 6: CONFIRMAR RECHAZO DE REACTIVO (FASE 2.9)
+                MODALES BLOQUE 6: DETALLE IQPE, APROBACIÓN, RECHAZO/DEVOLUCIÓN Y PUBLICACIÓN
                 ========================================================= */}
-            {isConfirmRejectOpen && questionToReject && (
-                <div className="qst-modal-overlay" onClick={() => !actionLoadingId && setIsConfirmRejectOpen(false)}>
-                    <div className="qst-modal-card" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
+            <IqpeQuestionDetailModal
+                isOpen={Boolean(detailQuestionId)}
+                questionId={detailQuestionId}
+                refreshNonce={detailRefreshNonce}
+                onClose={() => setDetailQuestionId(null)}
+                onEdit={handleOpenEdit}
+                onRequestApprove={handleApprove}
+                onRequestReject={handlePromptReject}
+                onRequestReturnToReview={handleRequestReturnToReview}
+                onRequestPublish={handleRequestPublish}
+            />
+
+            <IqpeApproveConfirmModal
+                isOpen={approveModalState.isOpen}
+                question={approveModalState.question}
+                eligibility={approveModalState.eligibility}
+                isLoading={Boolean(actionLoadingId)}
+                onClose={() => setApproveModalState({ isOpen: false, question: null, eligibility: null })}
+                onConfirm={handleConfirmApprove}
+            />
+
+            <IqpePublishConfirmModal
+                isOpen={publishModalState.isOpen}
+                question={publishModalState.question}
+                eligibility={publishModalState.eligibility}
+                isLoading={Boolean(actionLoadingId)}
+                onClose={() => setPublishModalState({ isOpen: false, question: null, eligibility: null })}
+                onConfirm={handleConfirmPublish}
+            />
+
+            <IqpeReasonActionModal
+                isOpen={reasonModalState.isOpen}
+                mode={reasonModalState.mode}
+                question={reasonModalState.question}
+                isLoading={Boolean(actionLoadingId)}
+                onClose={() => setReasonModalState({ isOpen: false, mode: "reject", question: null })}
+                onConfirm={handleConfirmReasonAction}
+            />
+            {/* Modal de Resumen de Aprobación Masiva */}
+            {isBulkSummaryOpen && bulkSummary && (
+                <div className="qst-modal-overlay" onClick={() => setIsBulkSummaryOpen(false)}>
+                    <div
+                        className="qst-modal-card"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ maxWidth: 640 }}
+                    >
                         <div className="qst-modal-header">
-                            <h2 className="qst-modal-title" style={{ color: "#ef4444" }}>
-                                <i className="fa-solid fa-triangle-exclamation"></i>
-                                Confirmar Rechazo de Reactivo
-                            </h2>
+                            <div className="qst-modal-title">
+                                <i className="fa-solid fa-list-check" style={{ color: "#22c55e", marginRight: 8 }}></i>
+                                <span>Reporte de Aprobación Masiva</span>
+                            </div>
                             <button
+                                type="button"
                                 className="qst-modal-close-btn"
-                                onClick={() => !actionLoadingId && setIsConfirmRejectOpen(false)}
-                                disabled={Boolean(actionLoadingId)}
-                                aria-label="Cerrar modal"
+                                onClick={() => setIsBulkSummaryOpen(false)}
                             >
                                 <i className="fa-solid fa-xmark"></i>
                             </button>
                         </div>
 
-                        <div className="qst-modal-body">
-                            <p style={{ color: "#f8fafc", fontSize: "0.92rem", margin: "0 0 10px 0" }}>
-                                ¿Deseas rechazar y archivar este reactivo extraído?
-                            </p>
-                            <div style={{ background: "rgba(10, 17, 40, 0.7)", padding: "12px 14px", borderRadius: "8px", border: "1px solid var(--qst-border)", marginBottom: "12px" }}>
-                                <div style={{ fontWeight: 700, color: "#ffffff", marginBottom: "4px" }}>
-                                    Pregunta #{questionToReject.order_in_group || questionToReject.id.slice(0, 8)}
+                        <div className="qst-modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                            <div style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(3, 1fr)",
+                                gap: 12,
+                                textAlign: "center",
+                            }}>
+                                <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "12px", borderRadius: 8, border: "1px solid rgba(148, 163, 184, 0.2)" }}>
+                                    <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#f8fafc" }}>{bulkSummary.total_received}</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Total Evaluadas</div>
                                 </div>
-                                <div style={{ fontSize: "0.82rem", color: "#94a3b8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                                    {questionToReject.statement}
+                                <div style={{ background: "rgba(34, 197, 94, 0.1)", padding: "12px", borderRadius: 8, border: "1px solid rgba(34, 197, 94, 0.3)" }}>
+                                    <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#4ade80" }}>{bulkSummary.total_approved}</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#86efac" }}>Aprobadas</div>
+                                </div>
+                                <div style={{ background: "rgba(239, 68, 68, 0.1)", padding: "12px", borderRadius: 8, border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+                                    <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#f87171" }}>{bulkSummary.total_rejected}</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#fca5a5" }}>Rechazadas</div>
                                 </div>
                             </div>
-                            <p style={{ color: "#94a3b8", fontSize: "0.82rem", margin: 0 }}>
-                                <i className="fa-solid fa-shield-halved" style={{ color: "#22c55e" }}></i> El reactivo cambiará a estado <strong>Archivada</strong>. Los textos de estímulo compartidos y demás preguntas del cuadernillo permanecerán totalmente intactos.
-                            </p>
+
+                            {bulkSummary.total_rejected > 0 && bulkSummary.rejected && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <h4 style={{ color: "#fca5a5", fontSize: "0.88rem", margin: "4px 0 0 0", display: "flex", alignItems: "center", gap: 6 }}>
+                                        <i className="fa-solid fa-triangle-exclamation"></i>
+                                        Detalle de reactivos que no pudieron ser aprobados:
+                                    </h4>
+                                    <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                                        {bulkSummary.rejected.map((rej, idx) => (
+                                            <div
+                                                key={rej.id || idx}
+                                                style={{
+                                                    padding: "8px 12px",
+                                                    borderRadius: 6,
+                                                    background: "rgba(239, 68, 68, 0.08)",
+                                                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                                                    fontSize: "0.8rem",
+                                                    color: "#fecaca",
+                                                    display: "flex",
+                                                    justifyContent: "space-between",
+                                                    alignItems: "center",
+                                                }}
+                                            >
+                                                <span>
+                                                    <strong>Pregunta #{rej.order || "—"}:</strong> {rej.reason}
+                                                </span>
+                                                <span style={{ fontSize: "0.72rem", color: "#94a3b8", fontFamily: "monospace" }}>
+                                                    {rej.id ? rej.id.slice(0, 8) : ""}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {bulkSummary.total_approved > 0 && (
+                                <div style={{
+                                    padding: "10px 14px",
+                                    borderRadius: 8,
+                                    background: "rgba(34, 197, 94, 0.08)",
+                                    border: "1px solid rgba(34, 197, 94, 0.2)",
+                                    color: "#86efac",
+                                    fontSize: "0.82rem",
+                                }}>
+                                    <i className="fa-solid fa-circle-check" style={{ marginRight: 6 }}></i>
+                                    Las preguntas aprobadas han pasado al banco oficial con estado <strong>review</strong> listas para calibración pedagógica.
+                                </div>
+                            )}
                         </div>
 
                         <div className="qst-modal-footer">
                             <button
                                 type="button"
-                                className="qst-btn-cancel"
-                                onClick={() => setIsConfirmRejectOpen(false)}
-                                disabled={Boolean(actionLoadingId)}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
                                 className="qst-btn-save"
-                                style={{ background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", boxShadow: "0 4px 12px rgba(239, 68, 68, 0.3)" }}
-                                onClick={handleConfirmReject}
-                                disabled={Boolean(actionLoadingId)}
+                                style={{ background: "#3b82f6" }}
+                                onClick={() => setIsBulkSummaryOpen(false)}
                             >
-                                {actionLoadingId ? (
-                                    <>
-                                        <span className="qst-spinner" style={{ width: "14px", height: "14px" }}></span>
-                                        <span>Archivando...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <i className="fa-solid fa-ban"></i>
-                                        <span>Confirmar Rechazo</span>
-                                    </>
-                                )}
+                                Entendido
                             </button>
                         </div>
                     </div>

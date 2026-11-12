@@ -1,16 +1,33 @@
 import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
 import "./Sidebar.css";
 import logo from "../assets/images/Zorrito_8.png";
+import { getUnreadNotificationsCount } from "../api/studentQuestions";
 
 const Sidebar = () => {
     const location = useLocation();
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    useEffect(() => {
+        const fetchUnread = async () => {
+            try {
+                const res = await getUnreadNotificationsCount();
+                if (res && res.success && typeof res.count === "number") {
+                    setUnreadCount(res.count);
+                }
+            } catch (err) {
+                // Silencioso en caso de no estar autenticado
+            }
+        };
+
+        fetchUnread();
+    }, [location.pathname]);
 
     const isActive = (path, startsWith = false) => {
         /* startsWith permite mantener activo todo un sub-ruta (ej: perfil/...) */
         const active = startsWith
             ? location.pathname.startsWith(path)
             : location.pathname === path;
-
 
         return active ? "sidebar__link--active" : "";
     };
@@ -84,11 +101,13 @@ const Sidebar = () => {
                 {/* NOTIFICATIONS */}
                 <Link
                     to="/profile/notifications"
-                    className={`sidebar__link sidebar__link--notifications ${isActive("/profile/notifications")}`}
+                    className={`sidebar__link sidebar__link--notifications ${isActive("/profile/notifications") || isActive("/notifications")}`}
                 >
                     <i className="fas fa-bell"></i>
                     <span>Notificaciones</span>
-                    <span className="sidebar__badge">3</span>
+                    {unreadCount > 0 && (
+                        <span className="sidebar__badge">{unreadCount}</span>
+                    )}
                 </Link>
             </nav>
         </aside>
