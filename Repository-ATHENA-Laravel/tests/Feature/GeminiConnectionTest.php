@@ -2,15 +2,24 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class GeminiConnectionTest extends TestCase
 {
     /**
-     * Probar la conexión real con Gemini a través del endpoint de diagnóstico.
+     * Probar la conexión real con Gemini a través del endpoint de diagnóstico (protegido para superadmin).
      */
     public function test_gemini_connection_endpoint(): void
     {
+        $this->artisan('migrate');
+        $superadmin = User::factory()->create([
+            'email' => 'superadmin.gemini@athena.edu.co',
+            'role' => 'superadmin',
+        ]);
+        Sanctum::actingAs($superadmin);
+
         $response = $this->getJson('/api/test-db/gemini');
 
         // Si la API key es válida y responde exitosamente

@@ -1,0 +1,290 @@
+/* ==========================================
+   RESET
+========================================== */
+
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ==========================================
+   VARIABLES
+========================================== */
+
+/* ==========================================
+   BASE
+========================================== */
+
+/* ==========================================
+   LAYOUT
+========================================== */
+
+/* ==========================================
+   SIDEBAR
+========================================== */
+
+/* ==========================================
+   MAIN
+========================================== */
+
+.main {
+    flex: 1;
+}
+
+.main__content {
+    padding: 28px 34px;
+}
+
+/* ==========================================
+   HEADER
+========================================== */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+
+    margin-bottom: 28px;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.page-header__info h1 {
+    font-size: 36px;
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+
+.page-header__info p {
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+
+.page-header__stats {
+    display: flex;
+    gap: 14px;
+}
+
+.header-stat {
+    background: var(--bg-card);
+
+    border: 1px solid var(--border);
+
+    border-radius: var(--radius-md);
+
+    padding: 14px 18px;
+
+    min-width: 110px;
+}
+
+.header-stat__value {
+    display: block;
+
+    font-size: 24px;
+    font-weight: 800;
+
+    color: var(--gold);
+}
+
+.header-stat__label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ==========================================
+   CATEGORIES
+========================================== */
+
+.categories {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+
+    margin-bottom: 28px;
+}
+
+.category-btn {
+    background: var(--bg-card);
+
+    border: 1px solid var(--border);
+
+    color: var(--text-secondary);
+
+    padding: 10px 18px;
+
+    border-radius: var(--radius-full);
+
+    font-size: 14px;
+    font-weight: 600;
+
+    cursor: pointer;
+
+    transition: 0.2s;
+}
+
+.category-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.category-btn--active {
+    background: var(--primary-light);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+/* ==========================================
+   ACHIEVEMENTS GRID
+========================================== */
+
+.achievements-grid {
+    display: grid;
+
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+
+    gap: 18px;
+}
+
+/* ==========================================
+   CARD
+========================================== */
+
+.achievement-card {
+    background: var(--bg-card);
+
+    border: 1px solid var(--border);
+
+    border-radius: var(--radius-lg);
+
+    padding: 24px 20px;
+
+    text-align: center;
+
+    transition: 0.25s ease;
+}
+
+.achievement-card:hover {
+    transform: translateY(-4px);
+}
+
+.achievement-card--gold {
+    border-color: rgba(244, 196, 48, 0.55);
+}
+
+.achievement-card--silver {
+    border-color: rgba(148, 163, 184, 0.45);
+}
+
+.achievement-card--locked {
+    opacity: 0.55;
+}
+
+/* ==========================================
+   ICON
+========================================== */
+
+.achievement-card__icon {
+    width: 72px;
+    height: 72px;
+
+    margin: 0 auto 18px;
+
+    border-radius: 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: var(--gold);
+
+    color: #111827;
+
+    font-size: 28px;
+}
+
+.achievement-card__icon--locked {
+    background: #2a3447;
+    color: #6b7280;
+}
+
+/* ==========================================
+   TEXT
+========================================== */
+
+.achievement-card__title {
+    font-size: 18px;
+    font-weight: 700;
+
+    margin-bottom: 6px;
+}
+
+.achievement-card__desc {
+    color: var(--text-secondary);
+
+    font-size: 13px;
+
+    margin-bottom: 18px;
+
+    min-height: 42px;
+}
+
+/* ==========================================
+   STATUS
+========================================== */
+
+.achievement-card__status {
+    display: inline-flex;
+
+    align-items: center;
+    justify-content: center;
+
+    padding: 6px 12px;
+
+    border-radius: var(--radius-full);
+
+    background: #1e293b;
+
+    color: var(--text-secondary);
+
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.achievement-card__status--completed {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--green);
+}
+
+/* ==========================================
+   RESPONSIVE
+========================================== */
+
+@media (max-width: 768px) {
+    .main__content {
+        padding: 20px 16px;
+    }
+
+    .page-header {
+        flex-direction: column;
+    }
+
+    .page-header__stats {
+        width: 100%;
+    }
+
+    .header-stat {
+        flex: 1;
+    }
+}
+
+@media (max-width: 480px) {
+    .achievements-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .page-header__info h1 {
+        font-size: 28px;
+    }
+}

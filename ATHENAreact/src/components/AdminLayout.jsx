@@ -1,54 +1,182 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import "./AdminLayout.css";
 import logoImg from "../assets/images/Zorrito_8.png";
 import useAuthStore from "../stores/useAuthStore";
+import { getAdminStats } from "../api/documents";
 
 const AdminLayout = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [searchText, setSearchText] = useState("");
+    const [alertsOpen, setAlertsOpen] = useState(false);
+    const [layoutStats, setLayoutStats] = useState(null);
+
+    const storeUser = useAuthStore((state) => state.user);
+    const storeRole = useAuthStore((state) => state.role);
     const logout = useAuthStore((state) => state.logout);
 
-    // Identificar el rol actual según la ruta
+    let storedAdmin = null;
+    try {
+        storedAdmin = JSON.parse(localStorage.getItem("athena_admin_user") || "null");
+    } catch {
+        storedAdmin = null;
+    }
+
+    const currentUser = storeUser || storedAdmin || {};
+    const rawUserRole = String(storeRole || currentUser?.role || "admin").toLowerCase().trim();
+    const actualRole = rawUserRole === "super_admin" ? "superadmin" : rawUserRole;
+    const isActualSuperAdmin = actualRole === "superadmin";
+    const isActualSupport = actualRole === "support";
+
     const isSuper =
         location.pathname.startsWith("/super") ||
         location.pathname.startsWith("/dashboard/superadmin");
+    const isSupport = location.pathname.startsWith("/support");
     const isAdmin =
         (location.pathname.startsWith("/admin") ||
             location.pathname.startsWith("/dashboard/admin")) &&
-        !isSuper;
-    const isSupport = location.pathname.startsWith("/support");
+        !isSuper &&
+        !isSupport;
 
     let currentRoleTitle = "Super Administrador";
     let roleBadge = "SUPER ADMIN";
-    let activeDashboardPath = "/dashboard/superadmin";
+    let activeDashboardPath = isActualSuperAdmin
+        ? "/dashboard/superadmin"
+        : isActualSupport
+        ? "/support/dashboard"
+        : "/dashboard/admin";
 
-    if (isAdmin) {
+    if (isAdmin && !isActualSuperAdmin) {
         currentRoleTitle = "Administrador Académico";
         roleBadge = "ADMIN";
-        activeDashboardPath = "/dashboard/admin";
-    } else if (isSupport) {
+    } else if (isSupport || isActualSupport) {
         currentRoleTitle = "Soporte Técnico";
         roleBadge = "SUPPORT";
-        activeDashboardPath = "/support/dashboard";
+    } else if (!isSuper && isActualSuperAdmin) {
+        currentRoleTitle = "Super Administrador";
+        roleBadge = "SUPER ADMIN";
     }
+
+    const fetchHeaderStats = async () => {
+        try {
+            const res = await getAdminStats();
+            if (res?.success && res?.data) {
+                setLayoutStats(res.data);
+            }
+        } catch {
+            // Silencioso en caso de carga inicial
+        }
+    };
+
+    useEffect(() => {
+        fetchHeaderStats();
+        const onRefresh = () => fetchHeaderStats();
+        window.addEventListener("athena-admin-stats-refresh", onRefresh);
+        return () => window.removeEventListener("athena-admin-stats-refresh", onRefresh);
+    }, [location.pathname]);
 
     const isUsersSection = location.pathname === "/admin/users";
     const isQuestionsSection = location.pathname === "/admin/questions";
     const isSubjectsSection = location.pathname === "/admin/subjects";
+    const isExamsSection = location.pathname === "/admin/exams";
+
+    const usersBadge = layoutStats?.users?.total !== undefined ? String(layoutStats.users.total) : null;
+    const questionsBadge = layoutStats?.questions?.total !== undefined ? String(layoutStats.questions.total) : null;
+    const subjectsBadge = layoutStats?.catalog?.total_subjects !== undefined ? String(layoutStats.catalog.total_subjects) : null;
+    const examsBadge =
+        layoutStats?.academic_activity?.total_exam_attempts !== undefined
+            ? String(layoutStats.academic_activity.total_exam_attempts)
+            : null;
 
     const navItems = [
-        { label: "Dashboard", icon: "fa-solid fa-chart-line", path: activeDashboardPath, isCurrent: location.pathname.includes("/dashboard") },
-        { label: "Usuarios", icon: "fa-solid fa-users", path: "/admin/users", badge: "10", isCurrent: isUsersSection },
-        { label: "Banco ICFES", icon: "fa-solid fa-layer-group", path: "/admin/questions", badge: "5.4k", isCurrent: isQuestionsSection },
-        { label: "Materias y Temas", icon: "fa-solid fa-book-bookmark", path: "/admin/subjects", badge: "5", isCurrent: isSubjectsSection },
-        { label: "Analítica", icon: "fa-solid fa-chart-pie", path: "#" },
-        { label: "Notificaciones", icon: "fa-solid fa-bell", path: "#", badge: "5" },
-        { label: "Suscripciones", icon: "fa-solid fa-credit-card", path: "#" },
-        { label: "Configuración", icon: "fa-solid fa-sliders", path: "#" },
+        {
+            label: "Dashboard",
+            icon: "fa-solid fa-chart-line",
+            path: activeDashboardPath,
+            isCurrent: location.pathname.includes("/dashboard"),
+        },
+        {
+            label: "Usuarios",
+            icon: "fa-solid fa-users",
+            path: "/admin/users",
+            badge: usersBadge,
+            isCurrent: isUsersSection,
+        },
+        {
+            label: "Banco ICFES",
+            icon: "fa-solid fa-layer-group",
+            path: "/admin/questions",
+            badge: questionsBadge,
+            isCurrent: isQuestionsSection,
+        },
+        {
+            label: "Materias y Temas",
+            icon: "fa-solid fa-book-bookmark",
+            path: "/admin/subjects",
+            badge: subjectsBadge,
+            isCurrent: isSubjectsSection,
+        },
+        {
+            label: "Simulacros",
+            icon: "fa-solid fa-file-signature",
+            path: "/admin/exams",
+            badge: examsBadge,
+            isCurrent: isExamsSection,
+        },
+        {
+            label: "Panel de Soporte",
+            icon: "fa-solid fa-headset",
+            path: "/support/dashboard",
+            isCurrent: isSupport,
+        },
     ];
+
+    const systemAlerts = [];
+    if ((layoutStats?.questions?.by_status?.draft || 0) > 0) {
+        systemAlerts.push({
+            id: "draft-questions",
+            icon: "fa-solid fa-clipboard-check",
+            color: "#f59e0b",
+            title: `${layoutStats.questions.by_status.draft} pregunta(s) en borrador`,
+            desc: "Pendientes de revisión y aprobación administrativa.",
+            path: "/admin/questions",
+        });
+    }
+    if ((layoutStats?.questions?.with_warnings || 0) > 0) {
+        systemAlerts.push({
+            id: "warning-questions",
+            icon: "fa-solid fa-triangle-exclamation",
+            color: "#ef4444",
+            title: `${layoutStats.questions.with_warnings} reactivo(s) con observaciones`,
+            desc: "Revisar advertencias en la bandeja de auditoría.",
+            path: "/support/dashboard",
+        });
+    }
+    if ((layoutStats?.users?.suspended || 0) > 0) {
+        systemAlerts.push({
+            id: "suspended-users",
+            icon: "fa-solid fa-user-lock",
+            color: "#3b82f6",
+            title: `${layoutStats.users.suspended} cuenta(s) suspendida(s)`,
+            desc: "Usuarios con acceso restringido temporalmente.",
+            path: "/admin/users",
+        });
+    }
+
+    const handleGlobalSearch = (e) => {
+        e.preventDefault();
+        const q = searchText.trim();
+        if (!q) return;
+
+        if (isUsersSection || q.includes("@")) {
+            navigate(`/admin/users?search=${encodeURIComponent(q)}`);
+        } else {
+            navigate(`/admin/questions?search=${encodeURIComponent(q)}`);
+        }
+    };
 
     const handleLogout = async () => {
         localStorage.removeItem("athena_admin_token");
@@ -57,17 +185,17 @@ const AdminLayout = () => {
         navigate("/admin/login");
     };
 
+    const displayUserName = currentUser?.full_name || currentUser?.name || "Administrador";
+    const displayAvatarChar = (displayUserName[0] || roleBadge[0] || "A").toUpperCase();
+
     return (
         <div className="admin-layout">
-            {/* Backdrop para pantallas móviles */}
             <div
                 className={`admin-sidebar-backdrop ${sidebarOpen ? "admin-sidebar-backdrop--visible" : ""}`}
                 onClick={() => setSidebarOpen(false)}
             />
 
-            {/* Sidebar Fijo */}
             <aside className={`admin-sidebar ${sidebarOpen ? "admin-sidebar--open" : ""}`}>
-                {/* Cabecera del Sidebar */}
                 <div className="admin-sidebar__header">
                     <Link to={activeDashboardPath} className="admin-sidebar__brand">
                         <img src={logoImg} alt="ATHENA Logo" className="admin-sidebar__logo" />
@@ -85,24 +213,27 @@ const AdminLayout = () => {
                     </button>
                 </div>
 
-                {/* Switcher de Roles para navegación y prueba de Sprint */}
                 <div className="admin-sidebar__roles-box">
-                    <div className="admin-sidebar__roles-title">Vistas de Dashboard</div>
+                    <div className="admin-sidebar__roles-title">Vistas Autorizadas</div>
                     <div className="admin-sidebar__roles-pills">
-                        <Link
-                            to="/dashboard/superadmin"
-                            className={`admin-sidebar__role-pill ${isSuper ? "admin-sidebar__role-pill--active" : ""}`}
-                            onClick={() => setSidebarOpen(false)}
-                        >
-                            Super
-                        </Link>
-                        <Link
-                            to="/dashboard/admin"
-                            className={`admin-sidebar__role-pill ${isAdmin ? "admin-sidebar__role-pill--active" : ""}`}
-                            onClick={() => setSidebarOpen(false)}
-                        >
-                            Admin
-                        </Link>
+                        {isActualSuperAdmin && (
+                            <Link
+                                to="/dashboard/superadmin"
+                                className={`admin-sidebar__role-pill ${isSuper ? "admin-sidebar__role-pill--active" : ""}`}
+                                onClick={() => setSidebarOpen(false)}
+                            >
+                                Super
+                            </Link>
+                        )}
+                        {!isActualSupport && (
+                            <Link
+                                to="/dashboard/admin"
+                                className={`admin-sidebar__role-pill ${location.pathname === "/dashboard/admin" ? "admin-sidebar__role-pill--active" : ""}`}
+                                onClick={() => setSidebarOpen(false)}
+                            >
+                                Admin
+                            </Link>
+                        )}
                         <Link
                             to="/support/dashboard"
                             className={`admin-sidebar__role-pill ${isSupport ? "admin-sidebar__role-pill--active" : ""}`}
@@ -113,7 +244,6 @@ const AdminLayout = () => {
                     </div>
                 </div>
 
-                {/* Navegación del Sidebar */}
                 <nav className="admin-sidebar__nav">
                     <div className="admin-sidebar__nav-section">Módulos Administrativos</div>
 
@@ -121,28 +251,25 @@ const AdminLayout = () => {
                         <Link
                             key={item.label}
                             to={item.path}
-                            onClick={() => {
-                                if (item.path !== "#") setSidebarOpen(false);
-                            }}
+                            onClick={() => setSidebarOpen(false)}
                             className={`admin-sidebar__link ${item.isCurrent ? "admin-sidebar__link--active" : ""}`}
                         >
                             <i className={item.icon}></i>
                             <span>{item.label}</span>
-                            {item.badge && (
+                            {item.badge !== null && item.badge !== undefined && (
                                 <span className="admin-sidebar__link-badge">{item.badge}</span>
                             )}
                         </Link>
                     ))}
                 </nav>
 
-                {/* Perfil del Administrador en Sidebar */}
                 <div className="admin-sidebar__footer">
                     <div className="admin-sidebar__user">
-                        <div className="admin-sidebar__user-avatar">
-                            {roleBadge[0]}
-                        </div>
+                        <div className="admin-sidebar__user-avatar">{displayAvatarChar}</div>
                         <div className="admin-sidebar__user-info">
-                            <div className="admin-sidebar__user-name">Administrador</div>
+                            <div className="admin-sidebar__user-name" title={currentUser?.email || ""}>
+                                {displayUserName}
+                            </div>
                             <div className="admin-sidebar__user-role">{currentRoleTitle}</div>
                         </div>
                         <button
@@ -156,9 +283,7 @@ const AdminLayout = () => {
                 </div>
             </aside>
 
-            {/* Contenedor Principal */}
             <div className="admin-main-wrapper">
-                {/* Header Superior */}
                 <header className="admin-header">
                     <div className="admin-header__left">
                         <button
@@ -174,32 +299,146 @@ const AdminLayout = () => {
                             </span>
                             <span className="admin-header__crumb-sep">/</span>
                             <span className="admin-header__crumb-current">
-                                {isUsersSection ? "Gestión de Estudiantes" : isQuestionsSection ? "Banco ICFES" : isSubjectsSection ? "Materias y Temas" : currentRoleTitle}
+                                {isUsersSection
+                                    ? "Gestión de Usuarios"
+                                    : isQuestionsSection
+                                    ? "Banco ICFES"
+                                    : isSubjectsSection
+                                    ? "Materias y Temas"
+                                    : isExamsSection
+                                    ? "Simulacros y Actividad"
+                                    : currentRoleTitle}
                             </span>
                         </div>
                     </div>
 
-                    <div className="admin-header__right">
-                        <div className="admin-header__search">
-                            <i className="fa-solid fa-magnifying-glass"></i>
+                    <div className="admin-header__right" style={{ position: "relative" }}>
+                        <form className="admin-header__search" onSubmit={handleGlobalSearch}>
+                            <i
+                                className="fa-solid fa-magnifying-glass"
+                                style={{ cursor: "pointer" }}
+                                onClick={handleGlobalSearch}
+                            ></i>
                             <input
                                 type="text"
-                                placeholder="Buscar en el panel..."
+                                value={searchText}
+                                onChange={(e) => setSearchText(e.target.value)}
+                                placeholder={
+                                    isUsersSection
+                                        ? "Buscar usuario por nombre o correo..."
+                                        : "Buscar preguntas o usuarios (@correo)..."
+                                }
                                 className="admin-header__search-input"
                             />
-                        </div>
+                        </form>
 
                         <div className="admin-header__role-indicator">
                             <span className="admin-header__status-pulse"></span>
                             <span>{roleBadge}</span>
                         </div>
 
-                        <button className="admin-header__action-btn" title="Notificaciones del sistema">
+                        <button
+                            type="button"
+                            className="admin-header__action-btn"
+                            title="Avisos operativos del sistema"
+                            onClick={() => setAlertsOpen((prev) => !prev)}
+                        >
                             <i className="fa-regular fa-bell"></i>
-                            <span className="admin-header__badge-dot"></span>
+                            {systemAlerts.length > 0 && <span className="admin-header__badge-dot"></span>}
                         </button>
 
+                        {alertsOpen && (
+                            <div
+                                style={{
+                                    position: "absolute",
+                                    top: "52px",
+                                    right: "48px",
+                                    width: "320px",
+                                    background: "#0f172a",
+                                    border: "1px solid rgba(148, 163, 184, 0.2)",
+                                    borderRadius: "12px",
+                                    padding: "14px",
+                                    boxShadow: "0 16px 36px rgba(0,0,0,0.45)",
+                                    zIndex: 120,
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        marginBottom: "10px",
+                                        paddingBottom: "8px",
+                                        borderBottom: "1px solid rgba(148, 163, 184, 0.12)",
+                                    }}
+                                >
+                                    <span style={{ fontWeight: 700, fontSize: "13px", color: "#f8fafc" }}>
+                                        Estado Operativo ({systemAlerts.length})
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAlertsOpen(false)}
+                                        style={{
+                                            background: "transparent",
+                                            border: "none",
+                                            color: "#94a3b8",
+                                            cursor: "pointer",
+                                        }}
+                                    >
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+
+                                {systemAlerts.length === 0 ? (
+                                    <div style={{ fontSize: "12.5px", color: "#94a3b8", padding: "8px 0" }}>
+                                        Sin alertas pendientes en el sistema.
+                                    </div>
+                                ) : (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                        {systemAlerts.map((alert) => (
+                                            <div
+                                                key={alert.id}
+                                                onClick={() => {
+                                                    setAlertsOpen(false);
+                                                    navigate(alert.path);
+                                                }}
+                                                style={{
+                                                    display: "flex",
+                                                    gap: "10px",
+                                                    padding: "9px 10px",
+                                                    borderRadius: "8px",
+                                                    background: "rgba(30, 41, 59, 0.65)",
+                                                    cursor: "pointer",
+                                                    alignItems: "flex-start",
+                                                }}
+                                            >
+                                                <i
+                                                    className={alert.icon}
+                                                    style={{ color: alert.color, marginTop: "3px" }}
+                                                ></i>
+                                                <div>
+                                                    <div
+                                                        style={{
+                                                            fontSize: "12.5px",
+                                                            fontWeight: 600,
+                                                            color: "#f1f5f9",
+                                                        }}
+                                                    >
+                                                        {alert.title}
+                                                    </div>
+                                                    <div style={{ fontSize: "11.5px", color: "#94a3b8" }}>
+                                                        {alert.desc}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <button
+                            type="button"
                             className="admin-header__action-btn"
                             title="Salir al Login Administrativo"
                             onClick={handleLogout}
@@ -209,7 +448,6 @@ const AdminLayout = () => {
                     </div>
                 </header>
 
-                {/* Contenido Dinámico con Transición */}
                 <main className="admin-content">
                     <AnimatePresence mode="wait">
                         <motion.div

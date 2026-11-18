@@ -75,12 +75,20 @@ class GeminiQuestionExtractionService
             $fileSizeBytes = strlen($pdfBytes);
             $base64Pdf = base64_encode($pdfBytes);
 
-            // 3. Extracción de imágenes físicas incrustadas en el PDF
+            // 3. Paso 1: Extraer imágenes físicas incrustadas en el PDF (en memoria, sin escribir aún en Storage)
             $extractionResult = $this->imageExtractor->extract($pdfBytes);
             $extractedImages = $extractionResult['images'] ?? [];
-            $uploadedImages = [];
             $totalPages = (int) ($extractionResult['pages'] ?? 0);
 
+            // 4. Paso 2: Identificar rutas y activos protegidos (y activos preexistentes) antes de subir imágenes
+            $storageContext = $this->resolveProtectedStorageContext($document, $mediaBucket);
+            $protectedPathsMap = $storageContext['protected_paths_map'];
+            $existingDraftPathsMap = $storageContext['existing_draft_paths_map'];
+            $hasProtectedAssets = ! empty($protectedPathsMap);
+
+            // 5. Paso 3: Preparar las imágenes y resolver sus rutas definitivas e inmutables
+            $preparedImages = [];
+            $uploadedImages = [];
             $manifest = [
                 'source_document_id' => $document->id,
                 'generated_at'       => now()->toIso8601String(),
@@ -89,43 +97,72 @@ class GeminiQuestionExtractionService
             ];
 
             foreach ($extractedImages as $img) {
-                if (($img['status'] ?? '') === 'ok') {
-                    $storagePath = sprintf('extracted/%s/page-%02d_obj%d.%s', $document->id, $img['page'], $img['object'], $img['ext']);
-                    $sha256 = hash('sha256', $img['bytes']);
-
-                    // Subir a icfes-media
-                    $this->storageService->upload($mediaBucket, $storagePath, $img['bytes'], [
-                        'ContentType' => $img['mime'],
-                    ]);
-
-                    $uploadedEntry = [
-                        'page'         => (int) $img['page'],
-                        'object'       => (int) $img['object'],
-                        'width'        => (int) $img['width'],
-                        'height'       => (int) $img['height'],
-                        'mime'         => $img['mime'],
-                        'sha256'       => $sha256,
-                        'storage_path' => $storagePath,
-                    ];
-
-                    $uploadedImages[] = $uploadedEntry;
-                    $manifest['images'][] = array_merge($uploadedEntry, [
-                        'status'             => 'ok',
-                        'association_status' => 'pending',
-                    ]);
+                if (($img['status'] ?? '') !== 'ok') {
+                    continue;
                 }
+
+                $candidatePath = sprintf('extracted/%s/page-%02d_obj%d.%s', $document->id, $img['page'], $img['object'], $img['ext']);
+                $incomingSha256 = hash('sha256', $img['bytes']);
+                $finalPath = $candidatePath;
+                $shouldUpload = true;
+                $reusedProtected = false;
+
+                if (isset($protectedPathsMap[$candidatePath])) {
+                    $registeredSha256 = $protectedPathsMap[$candidatePath]['sha256'] ?? null;
+
+                    if ($registeredSha256 !== null && hash_equals($registeredSha256, $incomingSha256)) {
+                        // Contenido idéntico al activo protegido: reutilizar referencia sin tocar Storage
+                        $finalPath = $candidatePath;
+                        $shouldUpload = false;
+                        $reusedProtected = true;
+                    } else {
+                        // Contenido diferente para una ruta candidata protegida: generar ruta nueva e inmutable basada en hash
+                        $shortHash = substr($incomingSha256, 0, 12);
+                        $finalPath = sprintf('extracted/%s/page-%02d_obj%d_%s.%s', $document->id, $img['page'], $img['object'], $shortHash, $img['ext']);
+                        $shouldUpload = true;
+                        $reusedProtected = false;
+                    }
+                } elseif (isset($existingDraftPathsMap[$candidatePath])) {
+                    $existingDraftSha256 = $existingDraftPathsMap[$candidatePath]['sha256'] ?? null;
+
+                    if ($existingDraftSha256 !== null && hash_equals($existingDraftSha256, $incomingSha256)) {
+                        // El archivo de borrador preexistente ya tiene exactamente los mismos bytes; reutilizar sin reescribir
+                        $finalPath = $candidatePath;
+                        $shouldUpload = false;
+                    } else {
+                        // Evitar sobrescribir el archivo de borrador anterior antes del commit SQL (protección ante rollback)
+                        $shortHash = substr($incomingSha256, 0, 12);
+                        $finalPath = sprintf('extracted/%s/page-%02d_obj%d_%s.%s', $document->id, $img['page'], $img['object'], $shortHash, $img['ext']);
+                        $shouldUpload = true;
+                    }
+                }
+
+                $uploadedEntry = [
+                    'page'             => (int) $img['page'],
+                    'object'           => (int) $img['object'],
+                    'width'            => (int) $img['width'],
+                    'height'           => (int) $img['height'],
+                    'mime'             => $img['mime'],
+                    'sha256'           => $incomingSha256,
+                    'storage_path'     => $finalPath,
+                    'reused_protected' => $reusedProtected,
+                ];
+
+                $preparedImages[] = array_merge($uploadedEntry, [
+                    'bytes'         => $img['bytes'],
+                    'should_upload' => $shouldUpload,
+                ]);
+
+                $uploadedImages[] = $uploadedEntry;
+                $manifest['images'][] = array_merge($uploadedEntry, [
+                    'status'             => 'ok',
+                    'association_status' => $reusedProtected ? 'confirmed' : 'pending',
+                ]);
             }
 
-            // Guardar manifest.json en el bucket de medios
-            $manifestJson = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-            $this->storageService->upload($mediaBucket, "extracted/{$document->id}/manifest.json", $manifestJson, [
-                'ContentType' => 'application/json',
-            ]);
-
-            // 4. Preparar prompt de extracción multimodal estricta ICFES contextual al documento
+            // 6. Paso 4: Preparar prompt y enviar solicitud multimodal a Gemini ANTES de escribir en Storage
             $systemInstruction = $this->buildPromptInstruction($document, $totalPages);
 
-            // 5. Llamada multimodal a Gemini con reintentos y fallback automático ante sobredemanda (HTTP 503 / 429)
             $candidateModels = array_values(array_unique(array_filter([
                 $this->model,
                 $this->fallbackModel,
@@ -230,7 +267,7 @@ class GeminiQuestionExtractionService
                 throw new RuntimeException('Gemini retornó una respuesta vacía o sin candidatos válidos.');
             }
 
-            // 6. Decodificar y validar JSON estructurado con limpieza de markdown
+            // 7. Paso 5: Decodificar y validar JSON estructurado ANTES de realizar escrituras físicas en Storage
             $extractedJson = $this->cleanAndDecodeJson($rawText);
             if (! is_array($extractedJson) || empty($extractedJson['questions'])) {
                 Log::error('Fallo al interpretar JSON de preguntas retornado por Gemini.', [
@@ -241,8 +278,53 @@ class GeminiQuestionExtractionService
                 throw new RuntimeException('La respuesta de Gemini no contiene una estructura JSON válida de preguntas.');
             }
 
-            // 7. Almacenar preguntas, estímulos y auto-asociar imágenes en transacción
-            $saveSummary = $this->persistExtractedData($document, $extractedJson, $uploadedImages);
+            // 8. Pasos 6, 7 y 8: Ejecutar escrituras físicas necesarias (sin sobrescribir protegidos), persistir en BD
+            // y limpiar exclusivamente objetos nuevos si ocurre un error de persistencia.
+            $newlyUploadedPaths = [];
+            try {
+                foreach ($preparedImages as $prepImg) {
+                    if (empty($prepImg['should_upload'])) {
+                        continue;
+                    }
+
+                    $targetPath = $prepImg['storage_path'];
+                    $this->storageService->upload($mediaBucket, $targetPath, $prepImg['bytes'], [
+                        'ContentType' => $prepImg['mime'],
+                    ]);
+                    $newlyUploadedPaths[] = $targetPath;
+                }
+
+                // Protección del manifest: no sobrescribir manifest.json si existen activos protegidos o previos
+                $manifestJson = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+                $baseManifestPath = "extracted/{$document->id}/manifest.json";
+                if ($hasProtectedAssets || ! empty($existingDraftPathsMap)) {
+                    $manifestHash = substr(hash('sha256', (string) $manifestJson), 0, 8);
+                    $manifestPath = "extracted/{$document->id}/manifest_reextract_{$manifestHash}.json";
+                } else {
+                    $manifestPath = $baseManifestPath;
+                }
+
+                $this->storageService->upload($mediaBucket, $manifestPath, $manifestJson, [
+                    'ContentType' => 'application/json',
+                ]);
+                $newlyUploadedPaths[] = $manifestPath;
+
+                // Paso 7: Persistir datos y referencias en transacción SQL
+                $saveSummary = $this->persistExtractedData($document, $extractedJson, $uploadedImages);
+            } catch (Throwable $persistenceEx) {
+                // Paso 8: Rollback compensatorio de Storage — eliminar únicamente archivos creados en esta operación
+                foreach ($newlyUploadedPaths as $newPath) {
+                    if (isset($protectedPathsMap[$newPath]) || isset($existingDraftPathsMap[$newPath])) {
+                        continue;
+                    }
+                    try {
+                        $this->storageService->delete($mediaBucket, $newPath, force: true);
+                    } catch (Throwable $cleanupEx) {
+                        Log::warning("No se pudo eliminar archivo nuevo temporal {$newPath} tras fallo de persistencia: " . $cleanupEx->getMessage());
+                    }
+                }
+                throw $persistenceEx;
+            }
 
             // 8. Ejecutar auditoría automática de calidad y verificación contra el PDF original
             $auditReport = $this->runAutomatedQualityAudit($document, $pdfBytes);
@@ -301,12 +383,217 @@ class GeminiQuestionExtractionService
     }
 
     /**
+     * Resuelve todas las rutas físicas y hashes SHA-256 asociados directa o indirectamente
+     * a preguntas protegidas (status != 'draft'), así como las rutas de borradores preexistentes.
+     */
+    protected function resolveProtectedStorageContext(SourceDocument $document, string $mediaBucket): array
+    {
+        $protectedQuestions = Question::where('source_document_id', $document->id)
+            ->where('status', '!=', 'draft')
+            ->get();
+
+        $protectedQuestionIds = $protectedQuestions->pluck('id')->all();
+
+        $protectedStimulusIds = $protectedQuestions
+            ->pluck('stimulus_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $protectedStimuli = ! empty($protectedStimulusIds)
+            ? Stimulus::whereIn('id', $protectedStimulusIds)->get()->keyBy('id')
+            : collect();
+
+        $referencedPaths = collect()
+            ->merge($protectedQuestions->pluck('question_image_path'))
+            ->merge($protectedStimuli->pluck('media_path'))
+            ->merge(
+                ! empty($protectedQuestionIds)
+                    ? QuestionOption::whereIn('question_id', $protectedQuestionIds)->pluck('option_image_path')
+                    : []
+            )
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $protectedMediaAssets = MediaAsset::where('source_document_id', $document->id)
+            ->where(function ($query) use ($protectedQuestionIds, $protectedStimulusIds, $referencedPaths) {
+                $query->where(function ($q) {
+                    $q->where('association_status', 'confirmed')
+                        ->whereNull('question_id')
+                        ->whereNull('stimulus_id');
+                });
+                if (! empty($protectedQuestionIds)) {
+                    $query->orWhereIn('question_id', $protectedQuestionIds);
+                }
+                if (! empty($protectedStimulusIds)) {
+                    $query->orWhereIn('stimulus_id', $protectedStimulusIds);
+                }
+                if (! empty($referencedPaths)) {
+                    $query->orWhereIn('storage_path', $referencedPaths);
+                }
+            })
+            ->get();
+
+        $protectedMediaAssetIds = $protectedMediaAssets->pluck('id')->all();
+        $protectedAssetsByPath = $protectedMediaAssets->keyBy('storage_path');
+
+        $allProtectedPaths = collect($referencedPaths)
+            ->merge($protectedMediaAssets->pluck('storage_path'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $protectedPathsMap = [];
+        foreach ($allProtectedPaths as $path) {
+            $asset = $protectedAssetsByPath->get($path);
+            $dbSha256 = $asset?->sha256;
+            $physicalSha256 = null;
+
+            try {
+                if ($this->storageService->exists($mediaBucket, $path)) {
+                    $rawBytes = $this->storageService->get($mediaBucket, $path);
+                    if (is_string($rawBytes) && $rawBytes !== '' && ! str_starts_with($rawBytes, '%PDF-')) {
+                        $physicalSha256 = hash('sha256', $rawBytes);
+                    }
+                }
+            } catch (Throwable $e) {
+                // Continuar usando el hash registrado en BD si la lectura previa falla
+            }
+
+            // Si existen tanto el hash físico como el registrado y difieren, marcar mismatch para forzar ruta independiente si llega otro archivo
+            $effectiveSha256 = $dbSha256 ?? $physicalSha256;
+            if ($dbSha256 !== null && $physicalSha256 !== null && ! hash_equals($dbSha256, $physicalSha256)) {
+                $effectiveSha256 = null;
+            }
+
+            $protectedPathsMap[$path] = [
+                'storage_path'    => $path,
+                'sha256'          => $effectiveSha256,
+                'db_sha256'       => $dbSha256,
+                'physical_sha256' => $physicalSha256,
+                'media_asset_id'  => $asset?->id,
+            ];
+        }
+
+        // Activos preexistentes de borradores (para no sobrescribir sus archivos antes de que la transacción SQL confirme)
+        $existingDraftQuery = MediaAsset::where('source_document_id', $document->id);
+        if (! empty($protectedMediaAssetIds)) {
+            $existingDraftQuery->whereNotIn('id', $protectedMediaAssetIds);
+        }
+        $existingDraftAssets = $existingDraftQuery->get();
+
+        $existingDraftPathsMap = [];
+        foreach ($existingDraftAssets as $draftAsset) {
+            if (! empty($draftAsset->storage_path) && ! isset($protectedPathsMap[$draftAsset->storage_path])) {
+                $existingDraftPathsMap[$draftAsset->storage_path] = [
+                    'storage_path'   => $draftAsset->storage_path,
+                    'sha256'         => $draftAsset->sha256,
+                    'media_asset_id' => $draftAsset->id,
+                ];
+            }
+        }
+
+        return [
+            'protected_paths_map'      => $protectedPathsMap,
+            'existing_draft_paths_map' => $existingDraftPathsMap,
+        ];
+    }
+
+    /**
      * Persiste los estímulos, preguntas y recursos visuales auto-asociados en Supabase PostgreSQL.
+     * Protege preguntas en estado distinto de 'draft' (ej. 'review', 'published') junto con sus
+     * Stimulus y MediaAsset asociados directa o indirectamente durante una reextracción forzada.
      */
     protected function persistExtractedData(SourceDocument $document, array $data, array $uploadedImages = []): array
     {
         return DB::connection('question_bank')->transaction(function () use ($document, $data, $uploadedImages) {
-            // Evitar duplicados previos en draft al reintentar
+            // 0. Identificar preguntas protegidas (estado != 'draft', especialmente 'review' y 'published')
+            $protectedQuestions = Question::where('source_document_id', $document->id)
+                ->where('status', '!=', 'draft')
+                ->get();
+
+            $protectedQuestionIds = $protectedQuestions->pluck('id')->all();
+            $protectedQuestionsByOrder = $protectedQuestions->keyBy('order_in_group');
+            $protectedStatements = $protectedQuestions
+                ->mapWithKeys(fn (Question $q) => [mb_strtolower(trim($q->statement)) => $q])
+                ->all();
+
+            // Identificar Stimulus protegidos por relación directa con preguntas protegidas
+            $protectedStimulusIds = $protectedQuestions
+                ->pluck('stimulus_id')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $protectedStimuli = !empty($protectedStimulusIds)
+                ? Stimulus::whereIn('id', $protectedStimulusIds)->get()->keyBy('id')
+                : collect();
+
+            // Identificar rutas de almacenamiento referenciadas por preguntas protegidas, sus opciones o sus estímulos
+            $protectedStoragePaths = collect()
+                ->merge($protectedQuestions->pluck('question_image_path'))
+                ->merge($protectedStimuli->pluck('media_path'))
+                ->merge(
+                    !empty($protectedQuestionIds)
+                        ? QuestionOption::whereIn('question_id', $protectedQuestionIds)->pluck('option_image_path')
+                        : []
+                )
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            // Identificar MediaAssets protegidos (por question_id, stimulus_id, storage_path de entidades protegidas, o confirmados sin borrador)
+            $protectedMediaAssets = MediaAsset::where('source_document_id', $document->id)
+                ->where(function ($query) use ($protectedQuestionIds, $protectedStimulusIds, $protectedStoragePaths) {
+                    $query->where(function ($q) {
+                        $q->where('association_status', 'confirmed')
+                            ->whereNull('question_id')
+                            ->whereNull('stimulus_id');
+                    });
+                    if (!empty($protectedQuestionIds)) {
+                        $query->orWhereIn('question_id', $protectedQuestionIds);
+                    }
+                    if (!empty($protectedStimulusIds)) {
+                        $query->orWhereIn('stimulus_id', $protectedStimulusIds);
+                    }
+                    if (!empty($protectedStoragePaths)) {
+                        $query->orWhereIn('storage_path', $protectedStoragePaths);
+                    }
+                })
+                ->get();
+
+            $protectedMediaAssetIds = $protectedMediaAssets->pluck('id')->all();
+            $preservedAssetsByPath = $protectedMediaAssets->keyBy('storage_path');
+
+            // Asegurar que cualquier Stimulus referenciado por un MediaAsset protegido también quede protegido
+            $additionalStimulusIds = $protectedMediaAssets->pluck('stimulus_id')->filter()->unique()->all();
+            if (!empty($additionalStimulusIds)) {
+                $protectedStimulusIds = array_values(array_unique(array_merge($protectedStimulusIds, $additionalStimulusIds)));
+                $protectedStimuli = Stimulus::whereIn('id', $protectedStimulusIds)->get()->keyBy('id');
+            }
+
+            // Mapear tags de estímulos entrantes que correspondan a preguntas protegidas
+            $tagToProtectedStimulus = [];
+            if (!empty($data['questions']) && is_array($data['questions'])) {
+                foreach ($data['questions'] as $idx => $qData) {
+                    $qOrder = (int) ($qData['order'] ?? ($idx + 1));
+                    $qTag = $qData['stimulus_tag'] ?? null;
+                    if ($qTag && $protectedQuestionsByOrder->has($qOrder)) {
+                        $protQ = $protectedQuestionsByOrder->get($qOrder);
+                        if ($protQ->stimulus_id && $protectedStimuli->has($protQ->stimulus_id)) {
+                            $tagToProtectedStimulus[$qTag] = $protectedStimuli->get($protQ->stimulus_id);
+                        }
+                    }
+                }
+            }
+
+            // Eliminar únicamente preguntas regenerables en estado 'draft' y sus opciones
             $oldQuestions = Question::where('source_document_id', $document->id)
                 ->where('status', 'draft')
                 ->get();
@@ -316,16 +603,32 @@ class GeminiQuestionExtractionService
                 $oldQ->delete();
             }
 
-            Stimulus::where('source_document_id', $document->id)->delete();
-            MediaAsset::where('source_document_id', $document->id)->delete();
+            // Eliminar únicamente MediaAssets y Stimuli no protegidos (primero MediaAsset por FK hacia Stimulus)
+            $mediaDeleteQuery = MediaAsset::where('source_document_id', $document->id);
+            if (!empty($protectedMediaAssetIds)) {
+                $mediaDeleteQuery->whereNotIn('id', $protectedMediaAssetIds);
+            }
+            $mediaDeleteQuery->delete();
 
-            // 1. Registrar todos los assets multimedia físicos detectados con estado 'pending'
+            $stimulusDeleteQuery = Stimulus::where('source_document_id', $document->id);
+            if (!empty($protectedStimulusIds)) {
+                $stimulusDeleteQuery->whereNotIn('id', $protectedStimulusIds);
+            }
+            $stimulusDeleteQuery->delete();
+
+            // 1. Registrar los assets multimedia físicos no protegidos detectados con estado 'pending'
             $assetsByPage = [];
             foreach ($uploadedImages as $img) {
+                $storagePath = $img['storage_path'] ?? '';
+                if ($storagePath !== '' && ($preservedAssetsByPath->has($storagePath) || MediaAsset::where('storage_path', $storagePath)->exists())) {
+                    // El asset pertenece a una entidad protegida; no se recrea ni se reasigna
+                    continue;
+                }
+
                 $asset = MediaAsset::create([
                     'id'                 => (string) Str::uuid(),
                     'source_document_id' => $document->id,
-                    'storage_path'       => $img['storage_path'],
+                    'storage_path'       => $storagePath,
                     'page_number'        => (int) $img['page'],
                     'width'              => (int) $img['width'],
                     'height'             => (int) $img['height'],
@@ -341,20 +644,39 @@ class GeminiQuestionExtractionService
                 $assetsByPage[$page][] = $asset;
             }
 
-            // 2. Crear estímulos compartidos
+            // 2. Crear estímulos compartidos (o reutilizar estímulos protegidos existentes sin alterarlos)
             $stimuliMap = [];
             $stimuliCount = 0;
             $associatedMediaCount = 0;
 
             if (!empty($data['stimuli']) && is_array($data['stimuli'])) {
-                foreach ($data['stimuli'] as $stimData) {
-                    $tag = $stimData['id_tag'] ?? ('STIM_' . ($stimuliCount + 1));
-                    $subjectId = $this->resolveSubjectId($stimData['subject_name'] ?? '', $document);
-
-                    $hasVisual = !empty($stimData['has_visual_media']) || (!empty($stimData['visual_type']) && $stimData['visual_type'] !== 'none');
+                foreach ($data['stimuli'] as $stimIndex => $stimData) {
+                    $tag = $stimData['id_tag'] ?? ('STIM_' . ($stimIndex + 1));
                     $sourcePage = isset($stimData['source_page']) && is_numeric($stimData['source_page']) && (int) $stimData['source_page'] > 0
                         ? (int) $stimData['source_page']
                         : null;
+                    $incomingTitle = trim($stimData['title'] ?? 'Estímulo compartido');
+                    $incomingContent = trim($stimData['content_text'] ?? '');
+
+                    // Verificar si este estímulo ya existe como estímulo protegido
+                    $existingProtectedStimulus = $tagToProtectedStimulus[$tag] ?? null;
+                    if (!$existingProtectedStimulus && $protectedStimuli->isNotEmpty()) {
+                        $existingProtectedStimulus = $protectedStimuli->first(function (Stimulus $s) use ($incomingTitle, $incomingContent, $sourcePage) {
+                            if ($incomingContent !== '' && trim((string) $s->content_text) === $incomingContent) {
+                                return true;
+                            }
+                            return mb_strtolower(trim((string) $s->title)) === mb_strtolower($incomingTitle)
+                                && (int) $s->source_page === (int) $sourcePage;
+                        });
+                    }
+
+                    if ($existingProtectedStimulus) {
+                        $stimuliMap[$tag] = $existingProtectedStimulus;
+                        continue;
+                    }
+
+                    $subjectId = $this->resolveSubjectId($stimData['subject_name'] ?? '', $document);
+                    $hasVisual = !empty($stimData['has_visual_media']) || (!empty($stimData['visual_type']) && $stimData['visual_type'] !== 'none');
 
                     $visualTranscription = !empty($stimData['visual_transcription']) ? trim($stimData['visual_transcription']) : null;
                     $visualDescription = !empty($stimData['visual_description']) ? trim($stimData['visual_description']) : null;
@@ -363,8 +685,8 @@ class GeminiQuestionExtractionService
                         'id'                   => (string) Str::uuid(),
                         'source_document_id'   => $document->id,
                         'subject_id'           => $subjectId,
-                        'title'                => trim($stimData['title'] ?? 'Estímulo compartido'),
-                        'content_text'         => trim($stimData['content_text'] ?? ''),
+                        'title'                => $incomingTitle,
+                        'content_text'         => $incomingContent,
                         'media_type'           => $this->normalizeMediaType($stimData['media_type'] ?? ($hasVisual ? 'image' : 'none')),
                         'source_page'          => $sourcePage,
                         'instructions'         => $stimData['instructions'] ?? null,
@@ -402,14 +724,22 @@ class GeminiQuestionExtractionService
                 }
             }
 
-            // 3. Crear preguntas y auto-asociar imágenes de pregunta directa
+            // 3. Crear preguntas y auto-asociar imágenes de pregunta directa (omitiendo preguntas protegidas)
             $questionsCount = 0;
             $optionsCount = 0;
             $verifiedKeysCount = 0;
             $unverifiedKeysCount = 0;
 
             if (!empty($data['questions']) && is_array($data['questions'])) {
-                foreach ($data['questions'] as $qData) {
+                foreach ($data['questions'] as $qIndex => $qData) {
+                    $orderInGroup = (int) ($qData['order'] ?? ($qIndex + 1));
+                    $normalizedStatement = mb_strtolower(trim($qData['statement'] ?? ''));
+
+                    // No sobrescribir ni duplicar preguntas que ya están en revisión o publicadas
+                    if ($protectedQuestionsByOrder->has($orderInGroup) || ($normalizedStatement !== '' && isset($protectedStatements[$normalizedStatement]))) {
+                        continue;
+                    }
+
                     $subjectId = $this->resolveSubjectId($qData['subject_name'] ?? '', $document);
                     
                     // Asociar estímulo si existe
@@ -450,7 +780,7 @@ class GeminiQuestionExtractionService
                         'topic_id'             => null,
                         'stimulus_id'          => $stimulusId,
                         'source_document_id'   => $document->id,
-                        'order_in_group'       => (int) ($qData['order'] ?? ($questionsCount + 1)),
+                        'order_in_group'       => $orderInGroup,
                         'statement'            => trim($qData['statement'] ?? 'Pregunta sin enunciado'),
                         'source_page'          => $qSourcePage,
                         'visual_transcription' => $qVisualTrans,
@@ -842,6 +1172,29 @@ PROMPT;
             $order = $q->order_in_group;
             $page = $q->source_page;
             $ordersSeen[] = $order;
+            $isProtected = ($q->status !== 'draft');
+
+            // Si la pregunta ya está en review o published (no es draft), preservar su estado, key_status y extraction_warnings intactos
+            if ($isProtected) {
+                if ($q->key_status === 'verified') {
+                    $verifiedKeysCount++;
+                } else {
+                    $unverifiedKeysCount++;
+                }
+
+                if (empty($q->extraction_warnings)) {
+                    $readyForApprovalCount++;
+                } else {
+                    $requiresReviewCount++;
+                    $issues[] = [
+                        'order'       => $order,
+                        'question_id' => $q->id,
+                        'page'        => $page,
+                        'reason'      => $q->extraction_warnings,
+                    ];
+                }
+                continue;
+            }
 
             // Validación de opciones
             $options = $q->options;

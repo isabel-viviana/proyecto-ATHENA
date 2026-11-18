@@ -3,6 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import "./login_admin.css";
 import ZorritoLogo from "../../assets/images/Zorrito6.png";
 import { useAuthStore, getRedirectPathByRole } from "../../stores/useAuthStore";
+import { adminLogin } from "../../api/documents";
+import { setAuthToken } from "../../api/axios";
 
 const LoginAdmin = () => {
     const [email, setEmail] = useState("");
@@ -36,20 +38,56 @@ const LoginAdmin = () => {
         setIsSubmitting(true);
 
         try {
-            const data = await login({ email: email.trim(), password });
-            const userRole = data?.user?.role;
+            let userObj = null;
+            let tokenStr = null;
 
-            if (!["superadmin", "super_admin", "admin", "support"].includes(userRole)) {
+            try {
+                const qbRes = await adminLogin(email.trim(), password);
+                if (qbRes?.success && (qbRes?.token || qbRes?.data?.token)) {
+                    tokenStr = qbRes.token || qbRes.data?.token;
+                    userObj = qbRes.admin || qbRes.data?.user;
+                }
+            } catch (qbErr) {
+                if (qbErr?.response?.status === 403) {
+                    throw new Error(qbErr.response.data?.message || "No tienes permisos administrativos.");
+                }
+                const data = await login({ email: email.trim(), password });
+                userObj = data?.user;
+                tokenStr = data?.token || data?.access_token;
+            }
+
+            const userRole = String(userObj?.role || "").toLowerCase().trim();
+
+            if (!["superadmin", "super_admin", "admin", "support", "docente", "coordinador"].includes(userRole)) {
                 setError("Esta cuenta no tiene privilegios administrativos.");
                 await logout();
                 setIsSubmitting(false);
                 return;
             }
 
+            if (tokenStr && userObj) {
+                localStorage.setItem("athena_admin_token", tokenStr);
+                localStorage.setItem("athena_admin_user", JSON.stringify(userObj));
+                setAuthToken(tokenStr);
+                useAuthStore.setState({
+                    user: userObj,
+                    token: tokenStr,
+                    role: userRole,
+                    isAuthenticated: true,
+                    isInitialized: true,
+                    loading: false,
+                    error: null,
+                });
+            }
+
             navigate(getRedirectPathByRole(userRole));
         } catch (err) {
             setIsSubmitting(false);
-            setError(err?.message || "Credenciales de administrador inválidas.");
+            const msg =
+                err?.response?.data?.message ||
+                err?.message ||
+                "Credenciales de administrador inválidas.";
+            setError(msg);
         }
     };
 

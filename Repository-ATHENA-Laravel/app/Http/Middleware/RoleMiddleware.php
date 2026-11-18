@@ -10,7 +10,8 @@ class RoleMiddleware
 {
     /**
      * Verifica que el usuario autenticado tenga uno de los roles permitidos.
-     * Uso en rutas: ->middleware('role:admin,super_admin')
+     * Reconoce 'superadmin' y 'super_admin' como variantes equivalentes del superadministrador.
+     * Uso en rutas: ->middleware('role:admin,superadmin,super_admin')
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
@@ -22,7 +23,20 @@ class RoleMiddleware
             ], 401);
         }
 
-        if (!in_array($user->role, $roles, true)) {
+        $allowedRoles = [];
+        foreach ($roles as $role) {
+            $normalized = strtolower(trim($role));
+            $allowedRoles[] = $normalized;
+
+            if ($normalized === 'superadmin' || $normalized === 'super_admin') {
+                $allowedRoles[] = 'superadmin';
+                $allowedRoles[] = 'super_admin';
+            }
+        }
+
+        $userRole = strtolower(trim((string) $user->role));
+
+        if (!in_array($userRole, array_unique($allowedRoles), true)) {
             return response()->json([
                 'message' => 'No tienes permisos para acceder a este recurso.',
             ], 403);

@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Models\UserTopicPerformance;
+use Illuminate\Support\Facades\Auth;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class ExamModuleTest extends TestCase
@@ -16,12 +18,27 @@ class ExamModuleTest extends TestCase
     }
 
     /**
-     * Probar el ciclo de vida completo del módulo de simulacros.
+     * Probar que todos los endpoints de exámenes sin token devuelven 401.
+     */
+    public function test_exam_endpoints_require_sanctum_authentication(): void
+    {
+        Auth::forgetGuards();
+
+        $this->postJson('/api/exams/configure', ['exam_type' => 'quick', 'difficulty' => 'easy'])->assertStatus(401);
+        $this->getJson('/api/exams/1/questions')->assertStatus(401);
+        $this->postJson('/api/exams/1/answer', ['question_id' => 1, 'selected_option_id' => 1])->assertStatus(401);
+        $this->postJson('/api/exams/1/finish')->assertStatus(401);
+        $this->getJson('/api/exams/1/results')->assertStatus(401);
+    }
+
+    /**
+     * Probar el ciclo de vida completo del módulo de simulacros y aislamiento entre usuarios.
      */
     public function test_full_exam_lifecycle(): void
     {
-        $user = User::first();
+        $user = User::where('email', 'juan.acevedo@athena.edu.co')->first() ?? User::first();
         $this->assertNotNull($user);
+        Sanctum::actingAs($user);
 
         // 1. POST /api/exams/configure
         $configResponse = $this->postJson('/api/exams/configure', [
@@ -96,5 +113,13 @@ class ExamModuleTest extends TestCase
         // Verificar actualización en user_topic_performance
         $performanceCount = UserTopicPerformance::where('user_id', $user->id)->count();
         $this->assertGreaterThan(0, $performanceCount);
+
+        // 6. Verificar que otro usuario autenticado NO puede consultar preguntas ni resultados del intento de $user
+        $otherUser = User::factory()->create(['email' => 'otro.estudiante.exam@athena.edu.co']);
+        Sanctum::actingAs($otherUser);
+
+        $this->getJson("/api/exams/{$attemptId}/questions")->assertStatus(404);
+        $this->getJson("/api/exams/{$attemptId}/results")->assertStatus(404);
+        $this->postJson("/api/exams/{$attemptId}/finish")->assertStatus(400);
     }
 }

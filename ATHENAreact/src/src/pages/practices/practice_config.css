@@ -1,0 +1,276 @@
+.dashboard-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Sidebar (Mismo que el dashboard anterior) */
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 40px;
+}
+.logo-box {
+    background: #2b6cb0;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-weight: bold;
+}
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px 15px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border-radius: 10px;
+    transition: 0.3s;
+    margin-bottom: 5px;
+}
+.menu-item.active {
+    background: rgba(43, 108, 176, 0.2);
+    color: #63b3ed;
+    border-left: 3px solid #63b3ed;
+}
+
+/* Main Content */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.header-text h1 {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+.header-text p {
+    color: var(--text-dim);
+}
+
+/* Daily Goal Card */
+.daily-goal-card {
+    background: #0a1128;
+    padding: 15px 20px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border: 1px solid #1a2238;
+}
+
+.goal-icon {
+    color: #f6ad55;
+    font-size: 1.5rem;
+}
+.goal-count {
+    color: #f6ad55;
+    font-weight: bold;
+}
+.goal-progress-bg {
+    width: 120px;
+    height: 6px;
+    background: #1a2238;
+    border-radius: 10px;
+    margin-top: 8px;
+}
+.goal-progress-fill {
+    height: 100%;
+    background: #f6ad55;
+    border-radius: 10px;
+}
+
+/* Grid de Áreas */
+.areas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 25px;
+}
+
+/* Card General */
+.area-card {
+    background: var(--bg-card);
+    border-radius: 24px;
+    padding: 25px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    position: relative;
+    transition: transform 0.3s ease;
+}
+
+.area-card:hover {
+    transform: translateY(-5px);
+}
+
+.card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+
+.area-icon {
+    width: 45px;
+    height: 45px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.arrow-detail {
+    color: var(--text-dim);
+    cursor: pointer;
+}
+
+.area-card h3 {
+    font-size: 1.4rem;
+    margin-bottom: 5px;
+}
+.description {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-bottom: 30px;
+}
+
+/* Dominio / Progress Bar */
+.mastery-section {
+    margin-bottom: 25px;
+}
+.mastery-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+.mastery-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+.fill {
+    height: 100%;
+    border-radius: 10px;
+}
+
+/* Botones */
+.practice-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 14px;
+    border: none;
+    color: white;
+    font-weight: 600;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    transition: background 0.3s;
+}
+
+/* Variantes de Color por Área */
+.math-area .area-icon {
+    background: rgba(49, 130, 206, 0.2);
+    color: var(--math-color);
+}
+.math-area .fill {
+    background: var(--math-color);
+}
+.math-area .percentage {
+    color: var(--math-color);
+}
+.math-area .practice-btn {
+    background: rgba(49, 130, 206, 0.15);
+    border: 1px solid rgba(49, 130, 206, 0.3);
+}
+
+.reading-area .area-icon {
+    background: rgba(128, 90, 213, 0.2);
+    color: var(--reading-color);
+}
+.reading-area .fill {
+    background: var(--reading-color);
+}
+.reading-area .percentage {
+    color: var(--reading-color);
+}
+.reading-area .practice-btn {
+    background: rgba(128, 90, 213, 0.15);
+    border: 1px solid rgba(128, 90, 213, 0.3);
+}
+
+.social-area .area-icon {
+    background: rgba(214, 158, 46, 0.2);
+    color: var(--social-color);
+}
+.social-area .fill {
+    background: var(--social-color);
+}
+.social-area .percentage {
+    color: var(--social-color);
+}
+.social-area .practice-btn {
+    background: rgba(214, 158, 46, 0.15);
+    border: 1px solid rgba(214, 158, 46, 0.3);
+}
+
+.science-area .area-icon {
+    background: rgba(56, 161, 105, 0.2);
+    color: var(--science-color);
+}
+.science-area .fill {
+    background: var(--science-color);
+}
+.science-area .percentage {
+    color: var(--science-color);
+}
+.science-area .practice-btn {
+    background: rgba(56, 161, 105, 0.15);
+    border: 1px solid rgba(56, 161, 105, 0.3);
+}
+
+.english-area .area-icon {
+    background: rgba(229, 62, 62, 0.2);
+    color: var(--english-color);
+}
+.english-area .fill {
+    background: var(--english-color);
+}
+.english-area .percentage {
+    color: var(--english-color);
+}
+.english-area .practice-btn {
+    background: rgba(229, 62, 62, 0.15);
+    border: 1px solid rgba(229, 62, 62, 0.3);
+}
+
+.improve-tag {
+    background: rgba(229, 62, 62, 0.2);
+    color: var(--english-color);
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 8px;
+    margin-right: auto;
+    margin-left: 15px;
+}
+
+/* Floating Elements */
+.help-btn {
+    position: fixed;
+    right: 30px;
+    bottom: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #1a2238;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}

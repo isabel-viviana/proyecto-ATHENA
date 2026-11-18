@@ -369,6 +369,15 @@ class IqpeReviewController extends Controller
      */
     public function returnToReview(Request $request, string $id): JsonResponse
     {
+        $admin = $request->attributes->get('auth_admin', []);
+        $role = strtolower(trim((string) ($admin['role'] ?? '')));
+        if (! in_array($role, ['admin', 'superadmin', 'super_admin', 'docente', 'coordinador'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permisos para devolver preguntas a revisión.',
+            ], 403);
+        }
+
         if (! Str::isUuid($id)) {
             return response()->json([
                 'success' => false,
@@ -415,6 +424,15 @@ class IqpeReviewController extends Controller
      */
     public function publish(Request $request, string $id): JsonResponse
     {
+        $admin = $request->attributes->get('auth_admin', []);
+        $role = strtolower(trim((string) ($admin['role'] ?? '')));
+        if (! in_array($role, ['admin', 'superadmin', 'super_admin', 'docente', 'coordinador'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permisos para publicar preguntas.',
+            ], 403);
+        }
+
         if (! Str::isUuid($id)) {
             return response()->json([
                 'success' => false,

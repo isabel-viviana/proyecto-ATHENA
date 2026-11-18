@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 
 import Zorrito from "../../assets/images/Zorrito2D.png";
 import PracticeLightbox from "../practices/components/PracticeLightbox";
+import useProgressStore from "../../stores/useProgressStore";
 import {
     getExamAttempt,
     getActiveExam,
@@ -107,8 +108,9 @@ const MockExam = () => {
                 // Inicializar respuestas previas recuperadas del intento
                 const initialAnswers = {};
                 const initialTimePerQuestion = {};
-                if (data.answers && typeof data.answers === "object") {
-                    Object.entries(data.answers).forEach(([qId, ansObj]) => {
+                const savedAnswers = data.answers_map || data.answers;
+                if (savedAnswers && typeof savedAnswers === "object") {
+                    Object.entries(savedAnswers).forEach(([qId, ansObj]) => {
                         if (ansObj?.selected_option_id) {
                             initialAnswers[qId] = {
                                 selected_option_id: ansObj.selected_option_id,
@@ -188,6 +190,7 @@ const MockExam = () => {
         try {
             setFinishing(true);
             await finishExamAttempt(examId);
+            useProgressStore.getState().fetchDashboardProgress("all").catch(() => {});
             navigate(`/mock/result?id=${examId}&expired=true`, { replace: true });
         } catch (err) {
             console.error("Error al finalizar simulacro por tiempo expirado:", err);
@@ -380,6 +383,7 @@ const MockExam = () => {
             const res = await finishExamAttempt(examId);
             console.log("SIMULACRO FINALIZADO Y CALIFICADO:", res);
 
+            useProgressStore.getState().fetchDashboardProgress("all").catch(() => {});
             navigate(`/mock/result?id=${examId}`);
         } catch (err) {
             console.error("ERROR AL FINALIZAR SIMULACRO:", err);

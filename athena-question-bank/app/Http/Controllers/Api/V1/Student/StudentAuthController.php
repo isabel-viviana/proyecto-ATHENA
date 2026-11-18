@@ -71,7 +71,7 @@ class StudentAuthController extends Controller
 
         // 3. Validar contraseña
         $passwordMatches = false;
-        if (!empty($user['password']) && (password_verify($password, $user['password']) || $password === 'password')) {
+        if (!empty($user['password']) && password_verify($password, $user['password'])) {
             $passwordMatches = true;
         }
 
@@ -94,6 +94,7 @@ class StudentAuthController extends Controller
                 'name'  => $user['name'],
                 'email' => $user['email'],
                 'role'  => $user['role'],
+            
             ],
         ]);
     }
@@ -116,6 +117,7 @@ class StudentAuthController extends Controller
         }
 
         return response()->json([
+
             'success' => true,
             'student' => [
                 'id'    => $payload['sub'],

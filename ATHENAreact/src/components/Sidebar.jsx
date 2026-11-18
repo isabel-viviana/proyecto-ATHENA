@@ -83,6 +83,14 @@ const Sidebar = () => {
                 </Link>
 
                 <Link
+                    to="/analysis"
+                    className={`sidebar__link ${isActive("/analysis")}`}
+                >
+                    <i className="fas fa-stethoscope"></i>
+                    <span>Diagnóstico</span>
+                </Link>
+
+                <Link
                     to="/ranking"
                     className={`sidebar__link ${isActive("/ranking")}`}
                 >

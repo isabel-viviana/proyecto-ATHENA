@@ -8,6 +8,7 @@ use App\Http\Requests\Exam\FinishExamRequest;
 use App\Http\Requests\Exam\StartExamRequest;
 use App\Http\Requests\Exam\SubmitAnswerRequest;
 use App\Services\ExamService;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
@@ -22,11 +23,19 @@ class ExamController extends Controller
     }
 
     /**
-     * Obtiene el ID del usuario activo o utiliza 1 como fallback si no hay sesión iniciada.
+     * Obtiene el ID del usuario autenticado mediante Sanctum sin fallback a usuario fijo.
+     *
+     * @throws AuthenticationException
      */
     protected function getUserId(): int
     {
-        return Auth::id() ?? 1;
+        $userId = Auth::guard('sanctum')->id() ?? Auth::id();
+
+        if ($userId === null) {
+            throw new AuthenticationException('No autenticado.');
+        }
+
+        return (int) $userId;
     }
 
     /**
@@ -35,8 +44,10 @@ class ExamController extends Controller
      */
     public function configure(StartExamRequest $request): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $result = $this->examService->configureExam($this->getUserId(), $request->validated());
+            $result = $this->examService->configureExam($userId, $request->validated());
 
             return response()->json([
                 'success' => true,
@@ -67,8 +78,10 @@ class ExamController extends Controller
      */
     public function getQuestions(int $id): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->examService->getQuestions($id, $this->getUserId());
+            $data = $this->examService->getQuestions($id, $userId);
 
             return response()->json([
                 'success' => true,
@@ -90,8 +103,10 @@ class ExamController extends Controller
      */
     public function submitAnswer(SubmitAnswerRequest $request, int $id): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->examService->submitAnswer($id, $this->getUserId(), $request->validated());
+            $data = $this->examService->submitAnswer($id, $userId, $request->validated());
 
             return response()->json([
                 'success' => true,
@@ -113,8 +128,10 @@ class ExamController extends Controller
      */
     public function finish(FinishExamRequest $request, int $id): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->examService->finishExam($id, $this->getUserId());
+            $data = $this->examService->finishExam($id, $userId);
 
             return response()->json([
                 'success' => true,
@@ -136,8 +153,10 @@ class ExamController extends Controller
      */
     public function results(int $id): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->examService->getExamResults($id, $this->getUserId());
+            $data = $this->examService->getExamResults($id, $userId);
 
             return response()->json([
                 'success' => true,

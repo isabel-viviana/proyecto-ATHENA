@@ -326,10 +326,31 @@ const Statistics = () => {
                                 padding: "24px",
                                 marginBottom: "30px",
                             }}>
-                                <h3 style={{ color: "#f8fafc", fontSize: "18px", margin: "0 0 14px 0", display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <i className="fas fa-lightbulb" style={{ color: "#facc15" }}></i>
-                                    Diagnóstico Académico Personalizado
-                                </h3>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "14px" }}>
+                                    <h3 style={{ color: "#f8fafc", fontSize: "18px", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                                        <i className="fas fa-lightbulb" style={{ color: "#facc15" }}></i>
+                                        Diagnóstico Académico Personalizado
+                                    </h3>
+                                    <Link
+                                        to="/analysis"
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                            background: "rgba(56, 189, 248, 0.15)",
+                                            border: "1px solid rgba(56, 189, 248, 0.4)",
+                                            color: "#38bdf8",
+                                            padding: "6px 14px",
+                                            borderRadius: "8px",
+                                            fontSize: "13px",
+                                            fontWeight: 600,
+                                            textDecoration: "none",
+                                        }}
+                                    >
+                                        Ver Análisis Diagnóstico Completo
+                                        <i className="fas fa-arrow-right"></i>
+                                    </Link>
+                                </div>
                                 <p style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.6", marginBottom: "18px" }}>
                                     {academicAnalysis.pedagogical_advice}
                                 </p>

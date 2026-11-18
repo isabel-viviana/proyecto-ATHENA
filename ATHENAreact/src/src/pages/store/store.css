@@ -1,0 +1,334 @@
+/* ==========================================
+   RESET
+========================================== */
+
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ==========================================
+   VARIABLES
+========================================== */
+
+/* ==========================================
+   BASE
+========================================== */
+
+/* ==========================================
+   LAYOUT
+========================================== */
+
+/* ==========================================
+   SIDEBAR
+========================================== */
+
+/* ==========================================
+   MAIN
+========================================== */
+
+.main {
+    flex: 1;
+}
+
+.main__content {
+    padding: 30px 34px;
+}
+
+/* ==========================================
+   STORE HEADER
+========================================== */
+
+.store-header {
+    background-color: var(--bg-card);
+
+    border: 1px solid #3a4358;
+
+    border-radius: 18px;
+
+    padding: 22px 24px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 28px;
+
+    gap: 20px;
+}
+
+.store-header__left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.store-header__icon {
+    width: 52px;
+    height: 52px;
+
+    border-radius: 14px;
+
+    background: rgba(250, 204, 21, 0.12);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: var(--yellow);
+
+    font-size: 20px;
+}
+
+.store-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 3px;
+}
+
+.store-header p {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.coins {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    background: rgba(250, 204, 21, 0.1);
+
+    border: 1px solid rgba(250, 204, 21, 0.4);
+
+    color: var(--yellow);
+
+    padding: 12px 18px;
+
+    border-radius: 14px;
+
+    font-weight: 700;
+}
+
+/* ==========================================
+   SECTION
+========================================== */
+
+.shop-section {
+    margin-top: 10px;
+}
+
+.section-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 18px;
+}
+
+.section-title h2 {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.section-title span {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* ==========================================
+   GRID
+========================================== */
+
+.products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+}
+
+/* ==========================================
+   PRODUCT CARD
+========================================== */
+
+.product-card {
+    background-color: var(--bg-card);
+
+    border: 1px solid var(--border);
+
+    border-radius: 18px;
+
+    padding: 24px 20px;
+
+    text-align: center;
+
+    transition: 0.25s ease;
+}
+
+.product-card:hover {
+    transform: translateY(-4px);
+
+    border-color: rgba(99, 102, 241, 0.4);
+
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+}
+
+.product-card__avatar {
+    width: 78px;
+    height: 78px;
+
+    margin: 0 auto 18px;
+
+    border-radius: 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 28px;
+}
+
+.product-card h3 {
+    font-size: 16px;
+    font-weight: 700;
+
+    margin-bottom: 6px;
+}
+
+.product-card p {
+    color: var(--text-muted);
+    font-size: 13px;
+
+    margin-bottom: 18px;
+}
+
+/* ==========================================
+   AVATAR COLORS
+========================================== */
+
+.avatar-blue {
+    background: rgba(59, 130, 246, 0.15);
+    border: 2px solid #3b82f6;
+    color: #60a5fa;
+}
+
+.avatar-purple {
+    background: rgba(168, 85, 247, 0.15);
+    border: 2px solid #a855f7;
+    color: #c084fc;
+}
+
+.avatar-green {
+    background: rgba(34, 197, 94, 0.15);
+    border: 2px solid #22c55e;
+    color: #4ade80;
+}
+
+.avatar-yellow {
+    background: rgba(250, 204, 21, 0.15);
+    border: 2px solid #facc15;
+    color: #fde047;
+}
+
+.avatar-red {
+    background: rgba(239, 68, 68, 0.15);
+    border: 2px solid #ef4444;
+    color: #f87171;
+}
+
+.avatar-cyan {
+    background: rgba(6, 182, 212, 0.15);
+    border: 2px solid #06b6d4;
+    color: #67e8f9;
+}
+
+.avatar-pink {
+    background: rgba(236, 72, 153, 0.15);
+    border: 2px solid #ec4899;
+    color: #f9a8d4;
+}
+
+.avatar-orange {
+    background: rgba(249, 115, 22, 0.15);
+    border: 2px solid #f97316;
+    color: #fdba74;
+}
+
+/* ==========================================
+   BUTTON
+========================================== */
+
+.buy-btn {
+    width: 100%;
+
+    border: none;
+
+    background: rgba(250, 204, 21, 0.1);
+
+    border: 1px solid rgba(250, 204, 21, 0.5);
+
+    color: var(--yellow);
+
+    padding: 11px;
+
+    border-radius: 12px;
+
+    font-weight: 700;
+
+    cursor: pointer;
+
+    transition: 0.2s ease;
+}
+
+.buy-btn:hover {
+    background: rgba(250, 204, 21, 0.18);
+    transform: scale(1.02);
+}
+
+/* ==========================================
+   INVENTORY
+========================================== */
+
+.inventory {
+    display: flex;
+    justify-content: center;
+
+    margin-top: 34px;
+}
+
+.inventory a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    color: #3b82f6;
+
+    text-decoration: none;
+
+    font-weight: 600;
+
+    transition: 0.2s ease;
+}
+
+.inventory a:hover {
+    opacity: 0.8;
+}
+
+/* ==========================================
+   RESPONSIVE
+========================================== */
+
+@media (max-width: 768px) {
+    .main__content {
+        padding: 18px;
+    }
+
+    .store-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .products-grid {
+        grid-template-columns: 1fr;
+    }
+}

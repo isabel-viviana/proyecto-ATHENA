@@ -61,6 +61,7 @@ class StudentExamController extends Controller
                 'notice'          => 'Simulacro Parcial — Lectura Crítica Saber 11 (49 preguntas oficiales publicadas)',
                 'areas'           => $areas,
                 'question_counts' => [
+                    ['count' => 5, 'label' => '5 preguntas (Mini Simulacro Rápido)', 'recommended_minutes' => 15],
                     ['count' => 10, 'label' => '10 preguntas', 'recommended_minutes' => 20],
                     ['count' => 20, 'label' => '20 preguntas', 'recommended_minutes' => 40],
                     ['count' => 25, 'label' => '25 preguntas', 'recommended_minutes' => 50],
@@ -69,6 +70,7 @@ class StudentExamController extends Controller
                 'modes' => [
                     ['id' => 'area', 'label' => 'Simulacro por Área', 'description' => 'Evaluación focalizada en un área oficial del ICFES'],
                     ['id' => 'custom', 'label' => 'Simulacro Personalizado', 'description' => 'Ajusta cantidad de reactivos y tiempo disponible'],
+                    ['id' => 'quick', 'label' => 'Mini Simulacro Rápido', 'description' => 'Diagnóstico ágil multiárea sobre las competencias ICFES'],
                 ],
             ],
         ]);
@@ -76,6 +78,7 @@ class StudentExamController extends Controller
 
     /**
      * Inicia un nuevo intento de simulacro para el estudiante autenticado.
+     * Soporta tanto simulacro por área (subject_id) como Mini Simulacro Rápido multiárea (mode/exam_type = quick, subject_ids).
      * Selecciona preguntas publicadas en backend y protege las claves correctas.
      *
      * POST /api/v1/student/exams/start
@@ -92,63 +95,177 @@ class StudentExamController extends Controller
 
         $studentId = (string) $authStudent['sub'];
 
-        $validated = $request->validate([
-            'subject_id'       => 'required|integer',
-            'mode'             => 'nullable|string|in:area,custom,full',
-            'questions_count'  => 'required|integer|in:10,20,25,49',
-            'duration_minutes' => 'nullable|integer|min:5|max:300',
-        ]);
+        $requestedMode = $request->input('mode') ?: $request->input('exam_type');
+        $isQuickOrMultiArea = ($requestedMode === 'quick')
+            || ($request->has('subject_ids') && ! $request->filled('subject_id'));
 
-        $subjectId = (int) $validated['subject_id'];
+        if ($isQuickOrMultiArea) {
+            $validated = $request->validate([
+                'subject_id'       => 'nullable|integer',
+                'subject_ids'      => 'nullable|array|min:1',
+                'subject_ids.*'    => 'integer',
+                'mode'             => 'nullable|string|in:area,custom,full,quick',
+                'exam_type'        => 'nullable|string|in:area,custom,full,quick',
+                'difficulty'       => 'nullable|string|in:easy,medium,hard,all',
+                'questions_count'  => 'nullable|integer|min:1|max:50',
+                'duration_minutes' => 'nullable|integer|min:5|max:300',
+            ]);
 
-        // 1. Validar que la materia seleccionada tenga reactivos publicados
-        $availableCount = Question::where('status', 'published')
-            ->where('subject_id', $subjectId)
-            ->count();
+            $mode = ($validated['mode'] ?? $validated['exam_type'] ?? 'quick') === 'quick'
+                ? 'quick'
+                : ($validated['mode'] ?? 'quick');
 
-        if ($availableCount === 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El área seleccionada aún no tiene preguntas publicadas en el banco oficial.',
-            ], 422);
-        }
+            $subjectIds = ! empty($validated['subject_ids'])
+                ? array_values(array_unique(array_map('intval', $validated['subject_ids'])))
+                : (! empty($validated['subject_id']) ? [(int) $validated['subject_id']] : [1, 2, 3, 4, 5]);
 
-        $subject = Subject::find($subjectId);
-        $subjectName = $subject ? $subject->name : 'Lectura Crítica';
+            $requestedCount = (int) ($validated['questions_count'] ?? 5);
+            $difficultyFilter = $validated['difficulty'] ?? null;
 
-        // 2. Selección de preguntas en backend sin duplicados
-        $requestedCount = min((int) $validated['questions_count'], $availableCount);
-
-        $questionsQuery = Question::where('status', 'published')
-            ->where('subject_id', $subjectId);
-
-        if ($requestedCount >= $availableCount) {
-            // Cuadernillo completo: conservar orden oficial (1 -> 49)
-            $selectedQuestions = $questionsQuery
-                ->orderBy('order_in_group', 'asc')
-                ->orderBy('created_at', 'asc')
+            $allPublished = Question::where('status', 'published')
+                ->whereIn('subject_id', $subjectIds)
                 ->get();
-        } else {
-            // Muestra aleatoria sin repetición
-            $selectedQuestions = $questionsQuery
-                ->inRandomOrder()
-                ->limit($requestedCount)
-                ->get()
-                ->sortBy('order_in_group')
-                ->values();
-        }
 
-        if ($selectedQuestions->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No fue posible recuperar reactivos suficientes para el simulacro.',
-            ], 422);
+            if ($allPublished->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No hay preguntas publicadas disponibles en las áreas seleccionadas para iniciar el simulacro rápido.',
+                ], 422);
+            }
+
+            $targetCount = min($requestedCount, $allPublished->count());
+
+            // Selección balanceada multiárea: distribuir equitativamente entre las áreas con preguntas publicadas
+            $groupedBySubject = $allPublished->groupBy('subject_id')->map(function ($group) use ($difficultyFilter) {
+                $shuffled = $group->shuffle();
+                if ($difficultyFilter && $difficultyFilter !== 'all') {
+                    // Priorizar dificultad solicitada pero conservar el resto como respaldo
+                    $preferred = $shuffled->where('difficulty', $difficultyFilter)->values();
+                    $others = $shuffled->where('difficulty', '!=', $difficultyFilter)->values();
+                    return $preferred->concat($others)->values();
+                }
+                return $shuffled->values();
+            });
+
+            $selectedCollection = collect();
+            $pointers = [];
+            foreach ($subjectIds as $sid) {
+                $pointers[$sid] = 0;
+            }
+
+            $activeSubjectIds = array_values(array_filter(
+                $subjectIds,
+                fn($sid) => $groupedBySubject->has($sid) && $groupedBySubject->get($sid)->isNotEmpty()
+            ));
+
+            while ($selectedCollection->count() < $targetCount && ! empty($activeSubjectIds)) {
+                $addedInRound = false;
+                foreach ($activeSubjectIds as $sid) {
+                    if ($selectedCollection->count() >= $targetCount) {
+                        break;
+                    }
+                    $pool = $groupedBySubject->get($sid);
+                    $idx = $pointers[$sid] ?? 0;
+                    if ($pool && $idx < $pool->count()) {
+                        $selectedCollection->push($pool->get($idx));
+                        $pointers[$sid] = $idx + 1;
+                        $addedInRound = true;
+                    }
+                }
+                if (! $addedInRound) {
+                    break;
+                }
+            }
+
+            $selectedIds = $selectedCollection
+                ->sortBy([
+                    ['subject_id', 'asc'],
+                    ['order_in_group', 'asc'],
+                ])
+                ->pluck('id')
+                ->values()
+                ->all();
+
+            $selectedQuestions = Question::whereIn('id', $selectedIds)
+                ->get()
+                ->sortBy(fn($q) => array_search($q->id, $selectedIds))
+                ->values();
+
+            $subjectId = (int) ($selectedQuestions->first()->subject_id ?? $subjectIds[0] ?? 1);
+            $distinctSubjectIds = $selectedQuestions->pluck('subject_id')->unique()->values()->all();
+            $subjectNames = Subject::whereIn('id', $distinctSubjectIds)->orderBy('id', 'asc')->pluck('name')->all();
+
+            $subjectName = count($subjectNames) > 1
+                ? 'Multiárea ICFES'
+                : ($subjectNames[0] ?? 'Multiárea ICFES');
+            $attemptTitle = $mode === 'quick'
+                ? 'Mini Simulacro Rápido — Diagnóstico ICFES'
+                : "Simulacro Multiárea — {$subjectName}";
+            $durationMinutes = (int) ($validated['duration_minutes'] ?? ($mode === 'quick' ? 15 : max(5, $targetCount * 2)));
+        } else {
+            $validated = $request->validate([
+                'subject_id'       => 'required|integer',
+                'mode'             => 'nullable|string|in:area,custom,full,quick',
+                'questions_count'  => 'required|integer|in:5,10,20,25,49',
+                'duration_minutes' => 'nullable|integer|min:5|max:300',
+            ]);
+
+            $subjectId = (int) $validated['subject_id'];
+            $mode = $validated['mode'] ?? 'area';
+
+            // 1. Validar que la materia seleccionada tenga reactivos publicados
+            $availableCount = Question::where('status', 'published')
+                ->where('subject_id', $subjectId)
+                ->count();
+
+            if ($availableCount === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El área seleccionada aún no tiene preguntas publicadas en el banco oficial.',
+                ], 422);
+            }
+
+            $subject = Subject::find($subjectId);
+            $subjectName = $subject ? $subject->name : 'Lectura Crítica';
+
+            // 2. Selección de preguntas en backend sin duplicados
+            $requestedCount = min((int) $validated['questions_count'], $availableCount);
+
+            $questionsQuery = Question::where('status', 'published')
+                ->where('subject_id', $subjectId);
+
+            if ($requestedCount >= $availableCount) {
+                // Cuadernillo completo: conservar orden oficial (1 -> 49)
+                $selectedQuestions = $questionsQuery
+                    ->orderBy('order_in_group', 'asc')
+                    ->orderBy('created_at', 'asc')
+                    ->get();
+            } else {
+                // Muestra aleatoria sin repetición
+                $selectedQuestions = $questionsQuery
+                    ->inRandomOrder()
+                    ->limit($requestedCount)
+                    ->get()
+                    ->sortBy('order_in_group')
+                    ->values();
+            }
+
+            if ($selectedQuestions->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No fue posible recuperar reactivos suficientes para el simulacro.',
+                ], 422);
+            }
+
+            $attemptTitle = $mode === 'quick'
+                ? "Mini Simulacro Rápido — {$subjectName}"
+                : "Simulacro Parcial — {$subjectName} Saber 11";
+            $durationMinutes = (int) ($validated['duration_minutes'] ?? ($requestedCount * 2));
         }
 
         $selectedQuestions->load(['options', 'stimulus.confirmedMediaAssets', 'confirmedMediaAssets', 'subject', 'topic']);
 
-        // 3. Duración recomendada (~2 minutos por reactivo)
-        $durationMinutes = (int) ($validated['duration_minutes'] ?? ($requestedCount * 2));
+        // 3. Control de tiempos
         $now = now();
         $expiresAt = (clone $now)->addMinutes($durationMinutes);
 
@@ -160,8 +277,8 @@ class StudentExamController extends Controller
             'id'                   => $attemptId,
             'student_id'           => $studentId,
             'subject_id'           => $subjectId,
-            'title'                => "Simulacro Parcial — {$subjectName} Saber 11",
-            'mode'                 => $validated['mode'] ?? 'area',
+            'title'                => $attemptTitle,
+            'mode'                 => $mode,
             'questions_count'      => count($questionIds),
             'duration_minutes'     => $durationMinutes,
             'started_at'           => $now,
@@ -226,10 +343,20 @@ class StudentExamController extends Controller
     {
         $authStudent = $this->getAuthenticatedStudent($request);
         if (! $authStudent) {
-            return response()->json(['success' => true, 'data' => null]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesión no válida o expirada. Debes iniciar sesión.',
+            ], 401);
         }
 
         $studentId = (string) $authStudent['sub'];
+
+        if ($request->filled('student_id') && (string) $request->input('student_id') !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para consultar simulacros de otro estudiante.',
+            ], 403);
+        }
 
         $attempt = ExamAttempt::where('student_id', $studentId)
             ->where('status', 'in_progress')
@@ -268,11 +395,18 @@ class StudentExamController extends Controller
 
         $attempt = ExamAttempt::with('subject')->find($id);
 
-        if (! $attempt || $attempt->student_id !== $studentId) {
+        if (! $attempt) {
             return response()->json([
                 'success' => false,
-                'message' => 'El simulacro solicitado no existe o no pertenece a tu cuenta.',
+                'message' => 'El simulacro solicitado no existe.',
             ], 404);
+        }
+
+        if ((string) $attempt->student_id !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para consultar un simulacro de otro estudiante.',
+            ], 403);
         }
 
         // Si expiró el tiempo pero sigue in_progress, auto-finalizar
@@ -310,13 +444,18 @@ class StudentExamController extends Controller
             ? max(0, (int) ($attempt->expires_at->timestamp - now()->timestamp))
             : 0;
 
+        $distinctSubjects = $questions->pluck('subject.name')->filter()->unique()->values()->all();
+        $resolvedSubjectName = ($attempt->mode === 'quick' || count($distinctSubjects) > 1)
+            ? (count($distinctSubjects) > 1 ? 'Multiárea ICFES' : ($distinctSubjects[0] ?? 'Multiárea ICFES'))
+            : ($attempt->subject ? $attempt->subject->name : 'Lectura Crítica');
+
         return response()->json([
             'success' => true,
             'data'    => [
                 'attempt' => [
                     'id'                   => $attempt->id,
                     'title'                => $attempt->title,
-                    'subject_name'         => $attempt->subject ? $attempt->subject->name : 'Lectura Crítica',
+                    'subject_name'         => $resolvedSubjectName,
                     'mode'                 => $attempt->mode,
                     'questions_count'      => $attempt->questions_count,
                     'duration_minutes'     => $attempt->duration_minutes,
@@ -329,6 +468,7 @@ class StudentExamController extends Controller
                 ],
                 'questions'   => $formattedQuestions,
                 'answers_map' => $answersMap,
+                'answers'     => $answersMap,
             ],
         ]);
     }
@@ -351,13 +491,27 @@ class StudentExamController extends Controller
 
         $studentId = (string) $authStudent['sub'];
 
+        if ($request->filled('student_id') && (string) $request->input('student_id') !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No puedes registrar respuestas en nombre de otro estudiante.',
+            ], 403);
+        }
+
         $attempt = ExamAttempt::find($id);
 
-        if (! $attempt || $attempt->student_id !== $studentId) {
+        if (! $attempt) {
             return response()->json([
                 'success' => false,
                 'message' => 'Simulacro no encontrado.',
             ], 404);
+        }
+
+        if ((string) $attempt->student_id !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para modificar un simulacro de otro estudiante.',
+            ], 403);
         }
 
         if ($attempt->status !== 'in_progress') {
@@ -393,20 +547,50 @@ class StudentExamController extends Controller
             ], 422);
         }
 
-        // Resolver letra y opción
+        // Resolver y validar estrictamente que la opción pertenezca a la pregunta asignada
         $selectedOptionId = $validated['selected_option_id'] ?? null;
         $selectedLetter = !empty($validated['selected_option_letter'])
             ? strtoupper(trim($validated['selected_option_letter']))
             : null;
 
-        if ($selectedOptionId && ! $selectedLetter) {
-            $opt = QuestionOption::find($selectedOptionId);
-            if ($opt) $selectedLetter = $opt->option_letter;
-        } elseif ($selectedLetter && ! $selectedOptionId) {
+        if ($selectedOptionId !== null) {
+            $opt = QuestionOption::where('id', $selectedOptionId)
+                ->where('question_id', $questionId)
+                ->first();
+
+            if (! $opt) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La opción seleccionada no pertenece a la pregunta indicada.',
+                ], 422);
+            }
+
+            if ($selectedLetter !== null && strtoupper($opt->option_letter) !== $selectedLetter) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La letra de la opción no coincide con la opción seleccionada.',
+                ], 422);
+            }
+
+            $selectedLetter = $opt->option_letter;
+        } elseif ($selectedLetter !== null) {
             $opt = QuestionOption::where('question_id', $questionId)
                 ->where('option_letter', $selectedLetter)
                 ->first();
-            if ($opt) $selectedOptionId = $opt->id;
+
+            if (! $opt) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La opción seleccionada no existe para esta pregunta.',
+                ], 422);
+            }
+
+            $selectedOptionId = $opt->id;
+        } elseif (! array_key_exists('flagged', $validated)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debes seleccionar una opción válida o indicar la marca de revisión.',
+            ], 422);
         }
 
         $flagged = (bool) ($validated['flagged'] ?? false);
@@ -470,13 +654,27 @@ class StudentExamController extends Controller
 
         $studentId = (string) $authStudent['sub'];
 
+        if ($request->filled('student_id') && (string) $request->input('student_id') !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No puedes registrar respuestas en nombre de otro estudiante.',
+            ], 403);
+        }
+
         $attempt = ExamAttempt::find($id);
 
-        if (! $attempt || $attempt->student_id !== $studentId) {
+        if (! $attempt) {
             return response()->json([
                 'success' => false,
                 'message' => 'Simulacro no encontrado.',
             ], 404);
+        }
+
+        if ((string) $attempt->student_id !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para modificar un simulacro de otro estudiante.',
+            ], 403);
         }
 
         // Si ya está completado, no volver a calificar (evitar duplicaciones)
@@ -508,11 +706,25 @@ class StudentExamController extends Controller
 
         $attempt = ExamAttempt::with('subject')->find($id);
 
-        if (! $attempt || $attempt->student_id !== $studentId) {
+        if (! $attempt) {
             return response()->json([
                 'success' => false,
                 'message' => 'Simulacro no encontrado.',
             ], 404);
+        }
+
+        if ((string) $attempt->student_id !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para consultar los resultados de otro estudiante.',
+            ], 403);
+        }
+
+        if ($attempt->status !== 'completed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'No es posible consultar los resultados ni las respuestas correctas mientras el simulacro esté en progreso.',
+            ], 403);
         }
 
         // Cargar respuestas del intento
@@ -578,25 +790,47 @@ class StudentExamController extends Controller
             ];
         });
 
+        $subjectPerformance = $questionsDetail
+            ->groupBy('subject_name')
+            ->map(function ($group, $subjName) {
+                $tot = $group->count();
+                $corr = $group->where('is_correct', true)->count();
+                return [
+                    'subject_name' => $subjName,
+                    'name'         => $subjName,
+                    'correct'      => $corr,
+                    'total'        => $tot,
+                    'percent'      => $tot > 0 ? round(($corr / $tot) * 100) : 0,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $distinctSubjects = $questionsDetail->pluck('subject_name')->filter()->unique()->values()->all();
+        $resolvedSubjectName = ($attempt->mode === 'quick' || count($distinctSubjects) > 1)
+            ? (count($distinctSubjects) > 1 ? 'Multiárea ICFES' : ($distinctSubjects[0] ?? 'Multiárea ICFES'))
+            : ($attempt->subject ? $attempt->subject->name : 'Lectura Crítica');
+
         return response()->json([
             'success' => true,
             'data'    => [
                 'attempt' => [
-                    'id'                 => $attempt->id,
-                    'title'              => $attempt->title,
-                    'subject_name'       => $attempt->subject ? $attempt->subject->name : 'Lectura Crítica',
-                    'mode'               => $attempt->mode,
-                    'questions_count'    => $attempt->questions_count,
-                    'duration_minutes'   => $attempt->duration_minutes,
-                    'started_at'         => $attempt->started_at->toIso8601String(),
-                    'finished_at'        => $attempt->finished_at ? $attempt->finished_at->toIso8601String() : null,
-                    'status'             => $attempt->status,
-                    'score'              => $attempt->score,
-                    'correct_answers'    => $attempt->correct_answers,
-                    'incorrect_answers'  => $attempt->incorrect_answers,
-                    'omitted_answers'    => $attempt->omitted_answers,
-                    'accuracy'           => (float) $attempt->accuracy,
-                    'total_time_seconds' => $attempt->total_time_seconds,
+                    'id'                  => $attempt->id,
+                    'title'               => $attempt->title,
+                    'subject_name'        => $resolvedSubjectName,
+                    'mode'                => $attempt->mode,
+                    'questions_count'     => $attempt->questions_count,
+                    'duration_minutes'    => $attempt->duration_minutes,
+                    'started_at'          => $attempt->started_at->toIso8601String(),
+                    'finished_at'         => $attempt->finished_at ? $attempt->finished_at->toIso8601String() : null,
+                    'status'              => $attempt->status,
+                    'score'               => $attempt->score,
+                    'correct_answers'     => $attempt->correct_answers,
+                    'incorrect_answers'   => $attempt->incorrect_answers,
+                    'omitted_answers'     => $attempt->omitted_answers,
+                    'accuracy'            => (float) $attempt->accuracy,
+                    'total_time_seconds'  => $attempt->total_time_seconds,
+                    'subject_performance' => $subjectPerformance,
                 ],
                 'questions_detail' => $questionsDetail,
             ],
@@ -620,6 +854,13 @@ class StudentExamController extends Controller
 
         $studentId = (string) $authStudent['sub'];
 
+        if ($request->filled('student_id') && (string) $request->input('student_id') !== $studentId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para consultar el historial de otro estudiante.',
+            ], 403);
+        }
+
         $attempts = ExamAttempt::with('subject')
             ->where('student_id', $studentId)
             ->where('status', 'completed')
@@ -627,10 +868,14 @@ class StudentExamController extends Controller
             ->get();
 
         $data = $attempts->map(function ($a) {
+            $subjectName = $a->mode === 'quick'
+                ? 'Multiárea ICFES'
+                : ($a->subject ? $a->subject->name : 'Lectura Crítica');
+
             return [
                 'id'                 => $a->id,
                 'title'              => $a->title,
-                'subject_name'       => $a->subject ? $a->subject->name : 'Lectura Crítica',
+                'subject_name'       => $subjectName,
                 'mode'               => $a->mode,
                 'questions_count'    => $a->questions_count,
                 'score'              => $a->score,

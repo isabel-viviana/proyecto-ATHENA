@@ -5,6 +5,7 @@ namespace App\Http\Controllers\AI;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AI\SendMessageRequest;
 use App\Services\AiService;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
@@ -19,11 +20,19 @@ class AIController extends Controller
     }
 
     /**
-     * Centraliza la obtención del ID del usuario en sesión con fallback seguro (ID 1).
+     * Centraliza la obtención del ID del usuario autenticado mediante Sanctum sin fallback a usuario fijo.
+     *
+     * @throws AuthenticationException
      */
     protected function getUserId(): int
     {
-        return Auth::id() ?? 1;
+        $userId = Auth::guard('sanctum')->id() ?? Auth::id();
+
+        if ($userId === null) {
+            throw new AuthenticationException('No autenticado.');
+        }
+
+        return (int) $userId;
     }
 
     /**
@@ -32,10 +41,12 @@ class AIController extends Controller
      */
     public function sendMessage(SendMessageRequest $request): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
             $validated = $request->validated();
             $result = $this->aiService->sendMessage(
-                $this->getUserId(),
+                $userId,
                 $validated['message'],
                 $validated['conversation_id'] ?? null
             );
@@ -60,8 +71,10 @@ class AIController extends Controller
      */
     public function history(): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->aiService->getUserConversations($this->getUserId());
+            $data = $this->aiService->getUserConversations($userId);
 
             return response()->json([
                 'success' => true,
@@ -83,8 +96,10 @@ class AIController extends Controller
      */
     public function showConversation(string $id): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->aiService->getConversation($this->getUserId(), $id);
+            $data = $this->aiService->getConversation($userId, $id);
 
             return response()->json([
                 'success' => true,

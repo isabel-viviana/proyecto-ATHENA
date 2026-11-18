@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import "./questions.css";
 import {
     getDocuments,
@@ -19,6 +20,8 @@ import {
     publishQuestion,
     getSubjectsCatalog,
     getTopicsCatalog,
+    getStimuliCatalog,
+    createManualQuestion,
     getQuestions,
     getDocumentMedia,
     bulkApproveQuestions,
@@ -461,17 +464,23 @@ const Questions = () => {
         from: null,
         to: null,
     });
+    const [searchParams] = useSearchParams();
     const [bankPage, setBankPage] = useState(1);
     const [bankPerPage, setBankPerPage] = useState(10);
-    const [bankSearch, setBankSearch] = useState("");
+    const [bankSearch, setBankSearch] = useState(searchParams.get("search") || "");
     const [bankSubjectFilter, setBankSubjectFilter] = useState("Todas");
     const [bankStatusFilter, setBankStatusFilter] = useState("official");
     const [expandedBankIds, setExpandedBankIds] = useState(new Set());
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [catalogSubjects, setCatalogSubjects] = useState([]);
+    const [manualTopics, setManualTopics] = useState([]);
+    const [manualStimuli, setManualStimuli] = useState([]);
+    const [isSavingManual, setIsSavingManual] = useState(false);
+    const [manualFormError, setManualFormError] = useState(null);
     const [formData, setFormData] = useState({
-        subject: "Matemáticas",
-        topic: "",
-        difficulty: "Media",
+        subject_id: 2,
+        topic_id: "",
+        difficulty: "medium",
         statement: "",
         optionA: "",
         optionB: "",
@@ -479,6 +488,11 @@ const Questions = () => {
         optionD: "",
         correctOption: "A",
         explanation: "",
+        stimulusMode: "none",
+        stimulus_id: "",
+        stimulus_title: "",
+        stimulus_instructions: "Responda la pregunta de acuerdo con la siguiente información:",
+        stimulus_content_text: "",
     });
 
     const toggleBankExpand = (qId) => {
@@ -875,19 +889,39 @@ const Questions = () => {
     };
 
     // =========================================================
-    // 8. HANDLERS PREGUNTAS (TAB 1)
+    // 8. CREACIÓN MANUAL DE PREGUNTAS EN SUPABASE (TAB 1)
     // =========================================================
-    const handleView = (q) => console.log("Ver detalle:", q);
-    const handleEdit = (q) => console.log("Editar:", q);
-    const handleDelete = (q) => console.log("Eliminar:", q);
+    const loadManualCatalogForSubject = useCallback(async (subjectId) => {
+        try {
+            const [topicsRes, stimuliRes] = await Promise.all([
+                getTopicsCatalog(subjectId).catch(() => ({ data: [] })),
+                getStimuliCatalog({ subject_id: subjectId }).catch(() => ({ data: [] })),
+            ]);
+            setManualTopics(Array.isArray(topicsRes?.data) ? topicsRes.data : []);
+            setManualStimuli(Array.isArray(stimuliRes?.data) ? stimuliRes.data : []);
+        } catch {
+            setManualTopics([]);
+            setManualStimuli([]);
+        }
+    }, []);
 
-    const handleFormSubmit = (e) => {
-        e.preventDefault();
-        setIsModalOpen(false);
+    const handleOpenManualCreate = async () => {
+        setManualFormError(null);
+        let defaultSubId = 2;
+        try {
+            const subRes = await getSubjectsCatalog();
+            if (Array.isArray(subRes?.data) && subRes.data.length > 0) {
+                setCatalogSubjects(subRes.data);
+                defaultSubId = Number(subRes.data[0].id) || 1;
+            }
+        } catch {
+            // Usa catálogo por defecto si falla
+        }
+
         setFormData({
-            subject: "Matemáticas",
-            topic: "",
-            difficulty: "Media",
+            subject_id: defaultSubId,
+            topic_id: "",
+            difficulty: "medium",
             statement: "",
             optionA: "",
             optionB: "",
@@ -895,7 +929,113 @@ const Questions = () => {
             optionD: "",
             correctOption: "A",
             explanation: "",
+            stimulusMode: "none",
+            stimulus_id: "",
+            stimulus_title: "",
+            stimulus_instructions: "Responda la pregunta de acuerdo con la siguiente información:",
+            stimulus_content_text: "",
         });
+        setIsModalOpen(true);
+        await loadManualCatalogForSubject(defaultSubId);
+    };
+
+    const handleManualSubjectChange = async (newSubId) => {
+        const sid = Number(newSubId);
+        setFormData((prev) => ({
+            ...prev,
+            subject_id: sid,
+            topic_id: "",
+            stimulus_id: "",
+        }));
+        await loadManualCatalogForSubject(sid);
+    };
+
+    const handleFormSubmit = async (e) => {
+        e.preventDefault();
+        setManualFormError(null);
+
+        const stmt = formData.statement.trim();
+        if (stmt.length < 10) {
+            setManualFormError("El enunciado de la pregunta debe tener al menos 10 caracteres.");
+            return;
+        }
+
+        const opts = [
+            formData.optionA.trim(),
+            formData.optionB.trim(),
+            formData.optionC.trim(),
+            formData.optionD.trim(),
+        ];
+
+        if (opts.some((t) => !t)) {
+            setManualFormError("Debes completar el texto de las cuatro opciones (A, B, C y D).");
+            return;
+        }
+
+        const uniqueOpts = new Set(opts.map((t) => t.toLowerCase()));
+        if (uniqueOpts.size < 4) {
+            setManualFormError("Las cuatro opciones de respuesta (A, B, C y D) deben ser distintas.");
+            return;
+        }
+
+        if (formData.stimulusMode === "existing" && !formData.stimulus_id) {
+            setManualFormError("Selecciona el estímulo existente que deseas asociar o cambia la opción de estímulo.");
+            return;
+        }
+
+        if (formData.stimulusMode === "new" && !formData.stimulus_content_text.trim()) {
+            setManualFormError("Escribe el texto del nuevo estímulo de lectura para asociarlo a la pregunta.");
+            return;
+        }
+
+        setIsSavingManual(true);
+        try {
+            const payload = {
+                subject_id: Number(formData.subject_id),
+                topic_id: formData.topic_id ? Number(formData.topic_id) : null,
+                difficulty: formData.difficulty || "medium",
+                statement: stmt,
+                explanation: formData.explanation.trim() || null,
+                correct_option: formData.correctOption,
+                options: [
+                    { option_letter: "A", option_text: opts[0] },
+                    { option_letter: "B", option_text: opts[1] },
+                    { option_letter: "C", option_text: opts[2] },
+                    { option_letter: "D", option_text: opts[3] },
+                ],
+            };
+
+            if (formData.stimulusMode === "existing" && formData.stimulus_id) {
+                payload.stimulus_id = formData.stimulus_id;
+            } else if (formData.stimulusMode === "new" && formData.stimulus_content_text.trim()) {
+                payload.stimulus_title = formData.stimulus_title.trim() || null;
+                payload.stimulus_instructions = formData.stimulus_instructions.trim() || null;
+                payload.stimulus_content_text = formData.stimulus_content_text.trim();
+            }
+
+            const res = await createManualQuestion(payload);
+            if (res?.success) {
+                setExtractionSuccess(
+                    res.message ||
+                        "Pregunta creada exitosamente en Supabase en estado borrador (draft) para revisión y publicación."
+                );
+                setIsModalOpen(false);
+                setBankStatusFilter("draft");
+                setBankPage(1);
+                setReviewQueueNonce((n) => n + 1);
+                await fetchBankQuestions(1);
+                window.dispatchEvent(new Event("athena-admin-stats-refresh"));
+            }
+        } catch (err) {
+            const valErrors = err?.response?.data?.errors
+                ? Object.values(err.response.data.errors).flat().join(" ")
+                : null;
+            setManualFormError(
+                valErrors || err?.response?.data?.message || "No se pudo guardar la pregunta en Supabase."
+            );
+        } finally {
+            setIsSavingManual(false);
+        }
     };
 
     // =========================================================
@@ -1540,7 +1680,7 @@ const Questions = () => {
                 ) : activeTab === "questions" ? (
                     <button
                         className="qst-btn-new"
-                        onClick={() => setIsModalOpen(true)}
+                        onClick={handleOpenManualCreate}
                         type="button"
                     >
                         <i className="fa-solid fa-plus"></i>
@@ -3587,19 +3727,19 @@ const Questions = () => {
             )}
 
             {/* =========================================================
-                MODAL 4: CREACIÓN MANUAL DE PREGUNTAS (EXISTENTE)
+                MODAL 4: CREACIÓN MANUAL DE PREGUNTAS EN SUPABASE
                 ========================================================= */}
             {isModalOpen && (
-                <div className="qst-modal-overlay" onClick={() => setIsModalOpen(false)}>
-                    <div className="qst-modal-card" onClick={(e) => e.stopPropagation()}>
+                <div className="qst-modal-overlay" onClick={() => !isSavingManual && setIsModalOpen(false)}>
+                    <div className="qst-modal-card" style={{ maxWidth: "740px" }} onClick={(e) => e.stopPropagation()}>
                         <div className="qst-modal-header">
                             <h2 className="qst-modal-title">
                                 <i className="fa-solid fa-file-circle-plus"></i>
-                                Crear Nueva Pregunta ICFES
+                                Crear Nueva Pregunta ICFES en Supabase
                             </h2>
                             <button
                                 className="qst-modal-close-btn"
-                                onClick={() => setIsModalOpen(false)}
+                                onClick={() => !isSavingManual && setIsModalOpen(false)}
                                 aria-label="Cerrar modal"
                             >
                                 <i className="fa-solid fa-xmark"></i>
@@ -3608,68 +3748,217 @@ const Questions = () => {
 
                         <form onSubmit={handleFormSubmit}>
                             <div className="qst-modal-body">
+                                {manualFormError && (
+                                    <div
+                                        style={{
+                                            padding: "10px 14px",
+                                            borderRadius: "8px",
+                                            background: "rgba(239, 68, 68, 0.14)",
+                                            border: "1px solid rgba(239, 68, 68, 0.35)",
+                                            color: "#fca5a5",
+                                            fontSize: "0.85rem",
+                                            marginBottom: "14px",
+                                        }}
+                                    >
+                                        <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: "6px" }}></i>
+                                        {manualFormError}
+                                    </div>
+                                )}
+
+                                <div
+                                    style={{
+                                        padding: "10px 14px",
+                                        borderRadius: "8px",
+                                        background: "rgba(59, 130, 246, 0.1)",
+                                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                                        color: "#93c5fd",
+                                        fontSize: "0.8rem",
+                                        marginBottom: "14px",
+                                    }}
+                                >
+                                    <i className="fa-solid fa-shield-halved" style={{ marginRight: "6px" }}></i>
+                                    La pregunta se guardará en Supabase PostgreSQL en estado <strong>borrador (draft)</strong> con clave verificada, lista para su revisión, aprobación y publicación oficial.
+                                </div>
+
                                 <div className="qst-form-grid-3">
                                     <div className="qst-form-group">
-                                        <label className="qst-form-label">Materia</label>
+                                        <label className="qst-form-label">Área Académica *</label>
                                         <select
                                             className="qst-form-select"
-                                            value={formData.subject}
-                                            onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                                            value={formData.subject_id}
+                                            onChange={(e) => handleManualSubjectChange(e.target.value)}
+                                            disabled={isSavingManual}
                                         >
-                                            <option value="Matemáticas">Matemáticas</option>
-                                            <option value="Lectura Crítica">Lectura Crítica</option>
-                                            <option value="Ciencias Naturales">Ciencias Naturales</option>
-                                            <option value="Sociales y Ciudadanas">Sociales y Ciudadanas</option>
-                                            <option value="Inglés">Inglés</option>
+                                            {(catalogSubjects.length > 0
+                                                ? catalogSubjects
+                                                : [
+                                                      { id: 1, name: "Lectura Crítica" },
+                                                      { id: 2, name: "Matemáticas" },
+                                                      { id: 3, name: "Ciencias Naturales" },
+                                                      { id: 4, name: "Sociales y Ciudadanas" },
+                                                      { id: 5, name: "Inglés" },
+                                                  ]
+                                            ).map((s) => (
+                                                <option key={s.id} value={s.id}>
+                                                    {s.name}
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
 
                                     <div className="qst-form-group">
-                                        <label className="qst-form-label">Tema</label>
-                                        <input
-                                            type="text"
-                                            placeholder="Ej: Álgebra y Funciones"
-                                            className="qst-form-input"
-                                            value={formData.topic}
-                                            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
-                                            required
-                                        />
+                                        <label className="qst-form-label">Tema Curricular (Opcional)</label>
+                                        <select
+                                            className="qst-form-select"
+                                            value={formData.topic_id}
+                                            onChange={(e) => setFormData({ ...formData, topic_id: e.target.value })}
+                                            disabled={isSavingManual}
+                                        >
+                                            <option value="">— Sin tema específico —</option>
+                                            {manualTopics.map((t) => (
+                                                <option key={t.id} value={t.id}>
+                                                    {t.name}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     <div className="qst-form-group">
-                                        <label className="qst-form-label">Dificultad</label>
+                                        <label className="qst-form-label">Dificultad *</label>
                                         <select
                                             className="qst-form-select"
                                             value={formData.difficulty}
                                             onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                                            disabled={isSavingManual}
                                         >
-                                            <option value="Fácil">Fácil</option>
-                                            <option value="Media">Media</option>
-                                            <option value="Difícil">Difícil</option>
+                                            <option value="easy">Fácil (Easy)</option>
+                                            <option value="medium">Media (Medium)</option>
+                                            <option value="hard">Difícil (Hard)</option>
                                         </select>
                                     </div>
                                 </div>
 
+                                <div className="qst-form-group" style={{ marginTop: "6px" }}>
+                                    <label className="qst-form-label">Estímulo o Texto de Apoyo (Opcional)</label>
+                                    <select
+                                        className="qst-form-select"
+                                        value={formData.stimulusMode}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                stimulusMode: e.target.value,
+                                                stimulus_id: "",
+                                            })
+                                        }
+                                        disabled={isSavingManual}
+                                    >
+                                        <option value="none">Pregunta independiente (sin estímulo compartido)</option>
+                                        <option value="existing">
+                                            Asociar a un estímulo existente del área ({manualStimuli.length} disponibles)
+                                        </option>
+                                        <option value="new">Crear un nuevo texto / estímulo de lectura</option>
+                                    </select>
+                                </div>
+
+                                {formData.stimulusMode === "existing" && (
+                                    <div className="qst-form-group">
+                                        <label className="qst-form-label">Seleccionar Estímulo del Área *</label>
+                                        <select
+                                            className="qst-form-select"
+                                            value={formData.stimulus_id}
+                                            onChange={(e) => setFormData({ ...formData, stimulus_id: e.target.value })}
+                                            disabled={isSavingManual}
+                                        >
+                                            <option value="">Seleccione un estímulo registrado...</option>
+                                            {manualStimuli.map((st) => (
+                                                <option key={st.id} value={st.id}>
+                                                    {st.title} — {st.excerpt || "Sin extracto"}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {formData.stimulusMode === "new" && (
+                                    <div
+                                        style={{
+                                            background: "rgba(15, 23, 42, 0.65)",
+                                            border: "1px solid rgba(148, 163, 184, 0.2)",
+                                            borderRadius: "10px",
+                                            padding: "12px",
+                                            marginBottom: "12px",
+                                        }}
+                                    >
+                                        <div className="qst-form-grid-2">
+                                            <div className="qst-form-group">
+                                                <label className="qst-form-label">Título del Estímulo</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Ej: Fragmento de Cien años de soledad"
+                                                    className="qst-form-input"
+                                                    value={formData.stimulus_title}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, stimulus_title: e.target.value })
+                                                    }
+                                                    disabled={isSavingManual}
+                                                />
+                                            </div>
+                                            <div className="qst-form-group">
+                                                <label className="qst-form-label">Instrucción del Estímulo</label>
+                                                <input
+                                                    type="text"
+                                                    className="qst-form-input"
+                                                    value={formData.stimulus_instructions}
+                                                    onChange={(e) =>
+                                                        setFormData({
+                                                            ...formData,
+                                                            stimulus_instructions: e.target.value,
+                                                        })
+                                                    }
+                                                    disabled={isSavingManual}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="qst-form-group">
+                                            <label className="qst-form-label">Texto del Estímulo *</label>
+                                            <textarea
+                                                rows="3"
+                                                placeholder="Escribe el texto o contexto compartido..."
+                                                className="qst-form-textarea"
+                                                value={formData.stimulus_content_text}
+                                                onChange={(e) =>
+                                                    setFormData({
+                                                        ...formData,
+                                                        stimulus_content_text: e.target.value,
+                                                    })
+                                                }
+                                                disabled={isSavingManual}
+                                            ></textarea>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="qst-form-group">
-                                    <label className="qst-form-label">Enunciado de la Pregunta</label>
+                                    <label className="qst-form-label">Enunciado de la Pregunta *</label>
                                     <textarea
-                                        placeholder="Redacta el texto, contexto o situación problema del reactivo ICFES..."
+                                        placeholder="Redacta el texto, contexto o situación problema del reactivo ICFES (mínimo 10 caracteres)..."
                                         className="qst-form-textarea"
                                         rows="3"
                                         value={formData.statement}
                                         onChange={(e) => setFormData({ ...formData, statement: e.target.value })}
                                         required
+                                        disabled={isSavingManual}
                                     ></textarea>
                                 </div>
 
                                 <div className="qst-options-container">
                                     <h3 className="qst-options-heading">
-                                        <i className="fa-solid fa-list-ol"></i> Opciones de Respuesta
+                                        <i className="fa-solid fa-list-ol"></i> Opciones de Respuesta (A, B, C, D) *
                                     </h3>
 
                                     <div className="qst-form-grid-2">
                                         <div className="qst-form-group">
-                                            <label className="qst-form-label">Opción A</label>
+                                            <label className="qst-form-label">Opción A *</label>
                                             <input
                                                 type="text"
                                                 placeholder="Texto de la opción A"
@@ -3677,11 +3966,12 @@ const Questions = () => {
                                                 value={formData.optionA}
                                                 onChange={(e) => setFormData({ ...formData, optionA: e.target.value })}
                                                 required
+                                                disabled={isSavingManual}
                                             />
                                         </div>
 
                                         <div className="qst-form-group">
-                                            <label className="qst-form-label">Opción B</label>
+                                            <label className="qst-form-label">Opción B *</label>
                                             <input
                                                 type="text"
                                                 placeholder="Texto de la opción B"
@@ -3689,11 +3979,12 @@ const Questions = () => {
                                                 value={formData.optionB}
                                                 onChange={(e) => setFormData({ ...formData, optionB: e.target.value })}
                                                 required
+                                                disabled={isSavingManual}
                                             />
                                         </div>
 
                                         <div className="qst-form-group">
-                                            <label className="qst-form-label">Opción C</label>
+                                            <label className="qst-form-label">Opción C *</label>
                                             <input
                                                 type="text"
                                                 placeholder="Texto de la opción C"
@@ -3701,11 +3992,12 @@ const Questions = () => {
                                                 value={formData.optionC}
                                                 onChange={(e) => setFormData({ ...formData, optionC: e.target.value })}
                                                 required
+                                                disabled={isSavingManual}
                                             />
                                         </div>
 
                                         <div className="qst-form-group">
-                                            <label className="qst-form-label">Opción D</label>
+                                            <label className="qst-form-label">Opción D *</label>
                                             <input
                                                 type="text"
                                                 placeholder="Texto de la opción D"
@@ -3713,6 +4005,7 @@ const Questions = () => {
                                                 value={formData.optionD}
                                                 onChange={(e) => setFormData({ ...formData, optionD: e.target.value })}
                                                 required
+                                                disabled={isSavingManual}
                                             />
                                         </div>
                                     </div>
@@ -3720,11 +4013,12 @@ const Questions = () => {
 
                                 <div className="qst-form-grid-2">
                                     <div className="qst-form-group">
-                                        <label className="qst-form-label">Respuesta Correcta</label>
+                                        <label className="qst-form-label">Respuesta Correcta *</label>
                                         <select
                                             className="qst-form-select"
                                             value={formData.correctOption}
                                             onChange={(e) => setFormData({ ...formData, correctOption: e.target.value })}
+                                            disabled={isSavingManual}
                                         >
                                             <option value="A">Opción A</option>
                                             <option value="B">Opción B</option>
@@ -3734,13 +4028,14 @@ const Questions = () => {
                                     </div>
 
                                     <div className="qst-form-group">
-                                        <label className="qst-form-label">Explicación Pedagógica</label>
+                                        <label className="qst-form-label">Explicación / Justificación Pedagógica</label>
                                         <textarea
                                             placeholder="Justificación del por qué es la respuesta correcta..."
                                             className="qst-form-textarea"
                                             rows="2"
                                             value={formData.explanation}
                                             onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
+                                            disabled={isSavingManual}
                                         ></textarea>
                                     </div>
                                 </div>
@@ -3751,11 +4046,13 @@ const Questions = () => {
                                     type="button"
                                     className="qst-btn-cancel"
                                     onClick={() => setIsModalOpen(false)}
+                                    disabled={isSavingManual}
                                 >
                                     Cancelar
                                 </button>
-                                <button type="submit" className="qst-btn-save">
-                                    <i className="fa-solid fa-floppy-disk"></i> Guardar Pregunta
+                                <button type="submit" className="qst-btn-save" disabled={isSavingManual}>
+                                    <i className="fa-solid fa-floppy-disk"></i>{" "}
+                                    {isSavingManual ? "Guardando en Supabase..." : "Guardar Pregunta"}
                                 </button>
                             </div>
                         </form>

@@ -297,9 +297,92 @@ export const getAdminMe = async () => {
     return response.data;
 };
 
+/**
+ * Consultar estadísticas reales unificadas del panel administrativo (MySQL + Supabase).
+ */
+export const getAdminStats = async () => {
+    const response = await questionBankApi.get('/admin/stats');
+    return response.data;
+};
 
+/**
+ * Gestión real de usuarios en MySQL Core.
+ */
+export const getAdminUsers = async (params = {}) => {
+    const response = await questionBankApi.get('/admin/users', { params });
+    return response.data;
+};
 
+export const getAdminUser = async (userId) => {
+    const response = await questionBankApi.get(`/admin/users/${userId}`);
+    return response.data;
+};
 
+export const createAdminUser = async (payload) => {
+    const response = await questionBankApi.post('/admin/users', payload);
+    return response.data;
+};
 
+export const updateAdminUser = async (userId, payload) => {
+    const response = await questionBankApi.put(`/admin/users/${userId}`, payload);
+    return response.data;
+};
+
+export const changeAdminUserRole = async (userId, role) => {
+    const response = await questionBankApi.patch(`/admin/users/${userId}/role`, { role });
+    return response.data;
+};
+
+export const toggleAdminUserStatus = async (userId, status = null) => {
+    const body = status ? { status } : {};
+    const response = await questionBankApi.patch(`/admin/users/${userId}/status`, body);
+    return response.data;
+};
+
+/**
+ * CRUD real de Áreas Académicas (subjects) y Temas (topics) en Supabase PostgreSQL.
+ */
+export const createSubjectCatalog = async (payload) => {
+    const response = await questionBankApi.post('/admin/catalogs/subjects', payload);
+    return response.data;
+};
+
+export const updateSubjectCatalog = async (subjectId, payload) => {
+    const response = await questionBankApi.put(`/admin/catalogs/subjects/${subjectId}`, payload);
+    return response.data;
+};
+
+export const deleteSubjectCatalog = async (subjectId) => {
+    const response = await questionBankApi.delete(`/admin/catalogs/subjects/${subjectId}`);
+    return response.data;
+};
+
+export const createTopicCatalog = async (payload) => {
+    const response = await questionBankApi.post('/admin/catalogs/topics', payload);
+    return response.data;
+};
+
+export const updateTopicCatalog = async (topicId, payload) => {
+    const response = await questionBankApi.put(`/admin/catalogs/topics/${topicId}`, payload);
+    return response.data;
+};
+
+export const deleteTopicCatalog = async (topicId) => {
+    const response = await questionBankApi.delete(`/admin/catalogs/topics/${topicId}`);
+    return response.data;
+};
+
+export const getStimuliCatalog = async (params = {}) => {
+    const response = await questionBankApi.get('/admin/catalogs/stimuli', { params });
+    return response.data;
+};
+
+/**
+ * Creación manual de preguntas en Supabase PostgreSQL (entra en estado 'draft' para revisión).
+ */
+export const createManualQuestion = async (payload) => {
+    const response = await questionBankApi.post('/admin/questions', payload);
+    return response.data;
+};
 
 

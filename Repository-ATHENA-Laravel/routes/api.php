@@ -12,7 +12,7 @@ use App\Http\Controllers\TestDbController;
 | Se utiliza un prefijo 'test-db' para mantener el orden.
 */
 
-Route::prefix('test-db')->group(function () {
+Route::prefix('test-db')->middleware(['auth:sanctum', 'role:superadmin,super_admin'])->group(function () {
     // Diagnóstico de integridad de perfiles
     Route::get('/integrity', [TestDbController::class, 'verifyIntegrity']);
 

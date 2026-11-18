@@ -1,0 +1,365 @@
+/* ==========================================
+   RESET
+========================================== */
+
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ==========================================
+   VARIABLES
+========================================== */
+
+/* ==========================================
+   BASE
+========================================== */
+
+/* ==========================================
+   LAYOUT
+========================================== */
+
+/* ==========================================
+   SIDEBAR
+========================================== */
+
+/* ==========================================
+   MAIN
+========================================== */
+
+.main {
+    flex: 1;
+}
+
+.main__content {
+    max-width: 1050px;
+    margin: auto;
+
+    padding: 36px;
+}
+
+/* ==========================================
+   RESULT CARD
+========================================== */
+
+.result-card {
+    background: var(--bg-card);
+
+    border: 1px solid var(--border);
+
+    border-radius: 24px;
+
+    padding: 36px;
+
+    text-align: center;
+
+    margin-bottom: 24px;
+}
+
+.result-card h1 {
+    font-size: 38px;
+    font-weight: 800;
+
+    margin-bottom: 8px;
+}
+
+.result-card p {
+    color: var(--text-secondary);
+
+    margin-bottom: 28px;
+}
+
+/* ==========================================
+   SCORE
+========================================== */
+
+.score-circle {
+    width: 170px;
+    height: 170px;
+
+    border-radius: 50%;
+
+    margin: auto;
+
+    background:
+        radial-gradient(circle at center, #131e36 58%, transparent 59%),
+        conic-gradient(#38bdf8 0deg, #3b82f6 360deg);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.15);
+}
+
+.score-circle__inner {
+    width: 130px;
+    height: 130px;
+
+    border-radius: 50%;
+
+    background: #132238;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.score-circle__inner h2 {
+    font-size: 52px;
+    font-weight: 800;
+
+    line-height: 1;
+}
+
+.score-circle__inner span {
+    color: var(--text-secondary);
+
+    font-size: 14px;
+    margin-top: 6px;
+}
+
+/* ==========================================
+   GRID
+========================================== */
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+
+    margin-bottom: 26px;
+}
+
+/* ==========================================
+   CARD
+========================================== */
+
+.card {
+    background: var(--bg-card);
+
+    border: 1px solid var(--border);
+
+    border-radius: 20px;
+
+    padding: 24px;
+}
+
+.card h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    margin-bottom: 24px;
+
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.card h3 i {
+    color: #38bdf8;
+}
+
+/* ==========================================
+   DONUT
+========================================== */
+
+.donut-chart {
+    width: 240px;
+    margin: 0 auto 20px;
+}
+
+.donut-chart svg {
+    width: 100%;
+    display: block;
+}
+
+/* ==========================================
+   LEGEND
+========================================== */
+
+.legend {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    color: var(--text-secondary);
+
+    font-size: 14px;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+
+    border-radius: 50%;
+}
+
+.dot--green {
+    background: var(--green);
+}
+
+.dot--red {
+    background: var(--red);
+}
+
+.dot--gray {
+    background: #94a3b8;
+}
+
+/* ==========================================
+   SUBJECTS
+========================================== */
+
+.subject {
+    margin-bottom: 22px;
+}
+
+.subject:last-child {
+    margin-bottom: 0;
+}
+
+.subject__top {
+    display: flex;
+    justify-content: space-between;
+
+    margin-bottom: 8px;
+
+    font-size: 14px;
+}
+
+.subject__top span:last-child {
+    color: var(--text-secondary);
+}
+
+.subject__bar {
+    width: 100%;
+    height: 10px;
+
+    background: var(--bg-soft);
+
+    border-radius: 999px;
+
+    overflow: hidden;
+}
+
+.subject__fill {
+    height: 100%;
+    border-radius: 999px;
+}
+
+.green {
+    background: var(--green);
+}
+
+.red {
+    background: var(--red);
+}
+
+.yellow {
+    background: var(--yellow);
+}
+
+.blue {
+    background: var(--blue);
+}
+
+/* ==========================================
+   ACTIONS
+========================================== */
+
+.actions {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+
+    flex-wrap: wrap;
+}
+
+.btn {
+    border: none;
+    outline: none;
+
+    padding: 14px 24px;
+
+    border-radius: 12px;
+
+    font-weight: 700;
+    font-size: 14px;
+
+    cursor: pointer;
+
+    transition: 0.2s;
+}
+
+.btn--secondary {
+    background: #22334b;
+    color: #fff;
+}
+
+.btn--secondary:hover {
+    background: #2d4566;
+}
+
+.btn--primary {
+    background: #facc15;
+    color: #111827;
+}
+
+.btn--primary:hover {
+    transform: translateY(-2px);
+}
+
+/* ==========================================
+   RESPONSIVE
+========================================== */
+
+@media (max-width: 900px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .main__content {
+        padding: 20px;
+    }
+
+    .result-card h1 {
+        font-size: 30px;
+    }
+}
+
+@media (max-width: 480px) {
+    .score-circle {
+        width: 140px;
+        height: 140px;
+    }
+
+    .score-circle__inner {
+        width: 105px;
+        height: 105px;
+    }
+
+    .score-circle__inner h2 {
+        font-size: 40px;
+    }
+
+    .actions {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+}

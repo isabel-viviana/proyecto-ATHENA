@@ -215,7 +215,7 @@ class StudentProfileController extends Controller
             }
 
             // Verificar contraseña actual
-            if (! password_verify($validated['current_password'], $user->password) && $validated['current_password'] !== 'password') {
+            if (! password_verify($validated['current_password'], $user->password)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'La contraseña actual no es correcta. Verifica tu clave.',

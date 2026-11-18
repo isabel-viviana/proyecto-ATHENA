@@ -1,18 +1,31 @@
 import { Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "../stores/useAuthStore";
 
-const ADMIN_ROLES = ["superadmin", "super_admin", "admin", "support"];
+const ADMIN_ROLES = ["superadmin", "super_admin", "admin", "support", "docente", "coordinador"];
 
 /**
  * Protege rutas del panel administrativo.
  * Redirige a /admin/login si no está autenticado,
- * o a /dashboard si no tiene rol de administrador.
+ * a /dashboard si es estudiante, y restringe /dashboard/superadmin exclusivamente a superadmin.
  */
 export default function AdminRoute({ children }) {
     const { isAuthenticated, role, isInitialized } = useAuthStore();
     const location = useLocation();
 
-    if (!isInitialized) {
+    const storedAdminToken = localStorage.getItem("athena_admin_token");
+    let storedAdminRole = null;
+    try {
+        const parsed = JSON.parse(localStorage.getItem("athena_admin_user") || "null");
+        storedAdminRole = parsed?.role || null;
+    } catch {
+        storedAdminRole = null;
+    }
+
+    const effectiveRole = String(role || storedAdminRole || "").toLowerCase().trim();
+    const normalizedRole = effectiveRole === "super_admin" ? "superadmin" : effectiveRole;
+    const hasAdminSession = (isAuthenticated || Boolean(storedAdminToken)) && ADMIN_ROLES.includes(effectiveRole);
+
+    if (!isInitialized && !storedAdminToken) {
         return (
             <div
                 style={{
@@ -35,12 +48,19 @@ export default function AdminRoute({ children }) {
         );
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !storedAdminToken) {
         return <Navigate to="/admin/login" state={{ from: location }} replace />;
     }
 
-    if (!ADMIN_ROLES.includes(role)) {
+    if (!hasAdminSession) {
         return <Navigate to="/dashboard" replace />;
+    }
+
+    if (
+        (location.pathname.startsWith("/dashboard/superadmin") || location.pathname.startsWith("/super")) &&
+        normalizedRole !== "superadmin"
+    ) {
+        return <Navigate to={normalizedRole === "support" ? "/support/dashboard" : "/dashboard/admin"} replace />;
     }
 
     return children;
