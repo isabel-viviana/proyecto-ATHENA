@@ -1,8 +1,9 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Payments\PaymentController;
+use App\Http\Controllers\Payments\WompiWebhookController;
 use App\Http\Controllers\TestDbController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -43,3 +44,13 @@ Route::prefix('progress')->group(base_path('routes/progress.php'));
 Route::prefix('profile')->group(base_path('routes/profile.php'));
 Route::prefix('ai')->group(base_path('routes/ai.php'));
 Route::prefix('notifications')->group(base_path('routes/notifications.php'));
+
+Route::prefix('payments')->group(function () {
+    Route::post('/webhook', [WompiWebhookController::class, 'handle']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/plans', [PaymentController::class, 'index']);
+        Route::post('/checkout', [PaymentController::class, 'store']);
+        Route::get('/subscriptions/{subscriptionId}', [PaymentController::class, 'show']);
+    });
+});
