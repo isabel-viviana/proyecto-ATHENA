@@ -21,6 +21,9 @@ services:
     build:
       context: ./Repository-ATHENA-Laravel
       dockerfile: dockerfile
+    env_file:
+      - path: ./Repository-ATHENA-Laravel/.env
+        required: false
     container_name: athena-backend
     restart: unless-stopped
     ports:
