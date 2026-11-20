@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -22,6 +21,9 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_BLOCKED = 'blocked';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -33,6 +35,7 @@ class User extends Authenticatable
         'phone',
         'password',
         'role',
+        'status',
         'firebase_uid',
         'avatar_url',
         'grade',
@@ -69,6 +72,16 @@ class User extends Authenticatable
         'level' => 'integer',
         'target_icfes_score' => 'integer',
     ];
+
+    /**
+     * Determina si la cuenta del usuario se encuentra bloqueada/suspendida.
+     */
+    public function isBlocked(): bool
+    {
+        $status = strtolower(trim((string) ($this->status ?? self::STATUS_ACTIVE)));
+
+        return in_array($status, ['blocked', 'suspended', 'suspendido', 'inactivo', 'inactive'], true);
+    }
 
     public function examConfigs(): HasMany
     {

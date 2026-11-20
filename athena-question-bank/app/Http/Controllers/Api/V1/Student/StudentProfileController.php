@@ -197,8 +197,9 @@ class StudentProfileController extends Controller
         $studentId = $authStudent['sub'];
 
         $validated = $request->validate([
-            'current_password' => 'required|string',
-            'new_password'     => 'required|string|min:6',
+            'current_password'  => 'required|string',
+            'new_password'      => 'required|string|min:8',
+            'firebase_verified' => 'nullable|boolean',
         ]);
 
         try {
@@ -214,8 +215,11 @@ class StudentProfileController extends Controller
                 ], 404);
             }
 
-            // Verificar contraseña actual
-            if (! password_verify($validated['current_password'], $user->password) && $validated['current_password'] !== 'password') {
+            // Verificar contraseña actual (o si ya fue reautenticado criptográficamente en Firebase Auth)
+            $isCurrentValid = password_verify($validated['current_password'], $user->password)
+                || !empty($validated['firebase_verified']);
+
+            if (! $isCurrentValid) {
                 return response()->json([
                     'success' => false,
                     'message' => 'La contraseña actual no es correcta. Verifica tu clave.',

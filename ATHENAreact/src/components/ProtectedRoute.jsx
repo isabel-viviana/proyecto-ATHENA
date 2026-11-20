@@ -1,16 +1,33 @@
+import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import useAuthStore from "../stores/useAuthStore";
+import useAuthStore, { getRedirectPathByRole } from "../stores/useAuthStore";
+
+const DEFAULT_STUDENT_ROLES = ["student", "user"];
 
 /**
- * Protege rutas que requieren autenticación.
- * Redirige a /login si el usuario no está autenticado.
+ * Protege rutas que requieren autenticación y valida el rol permitido (allowedRoles).
+ * Redirige a /login si no está autenticado, o al dashboard correspondiente a su rol
+ * si intenta acceder a una ruta de otro rol.
  */
-export default function ProtectedRoute({ children }) {
-    const { isAuthenticated, isInitialized } = useAuthStore();
+export default function ProtectedRoute({
+    children,
+    allowedRoles = DEFAULT_STUDENT_ROLES,
+}) {
+    const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+    const isInitialized = useAuthStore((s) => s.isInitialized);
+    const isAuthLoading = useAuthStore((s) => s.isAuthLoading);
+    const role = useAuthStore((s) => s.role);
+    const fetchCurrentUser = useAuthStore((s) => s.fetchCurrentUser);
     const location = useLocation();
 
-    // Mientras Firebase / Laravel verifican la sesión inicial al cargar la app:
-    if (!isInitialized) {
+    // Validar sesión activa contra el backend (/api/auth/me) al cambiar de ruta protegida
+    useEffect(() => {
+        if (isInitialized && isAuthenticated) {
+            fetchCurrentUser();
+        }
+    }, [location.pathname, isInitialized, isAuthenticated, fetchCurrentUser]);
+
+    if (!isInitialized || isAuthLoading) {
         return (
             <div
                 style={{
@@ -35,6 +52,15 @@ export default function ProtectedRoute({ children }) {
 
     if (!isAuthenticated) {
         return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    const currentRole = String(role || "student").toLowerCase();
+    if (
+        Array.isArray(allowedRoles) &&
+        allowedRoles.length > 0 &&
+        !allowedRoles.includes(currentRole)
+    ) {
+        return <Navigate to={getRedirectPathByRole(currentRole)} replace />;
     }
 
     return children;

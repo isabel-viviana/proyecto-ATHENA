@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -60,7 +61,7 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $user = User::where('email', $credentials['email'])->first();
+        $user = User::where('email', strtolower(trim($credentials['email'])))->first();
 
         if (!$user || !Hash::check($credentials['password'], $user->password)) {
             Log::warning('Intento de login fallido (credenciales inválidas)', [
@@ -71,6 +72,21 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'El correo o la contraseña son incorrectos.',
             ], 401);
+        }
+
+        // Verificar explícitamente si el usuario está bloqueado antes de emitir token
+        if ($user->isBlocked()) {
+            $user->tokens()->delete();
+
+            Log::warning('Intento de login tradicional rechazado: cuenta bloqueada', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+            ]);
+
+            return response()->json([
+                'code' => 'ACCOUNT_BLOCKED',
+                'message' => 'Tu cuenta ha sido bloqueada o suspendida por un administrador. Contacta a soporte institucional.',
+            ], 403);
         }
 
         $user->forceFill(['last_login_at' => now()])->save();
@@ -111,9 +127,10 @@ class AuthController extends Controller
 
         $user = User::create([
             'full_name' => $data['full_name'],
-            'email' => $data['email'],
+            'email' => strtolower(trim($data['email'])),
             'password' => $data['password'],
             'role' => self::STUDENT_ROLE,
+            'status' => User::STATUS_ACTIVE,
         ]);
 
         try {
@@ -144,7 +161,7 @@ class AuthController extends Controller
 
     /**
      * Autentica al usuario mediante un Firebase ID Token.
-     * Busca o crea el usuario en la BD y devuelve un token Sanctum.
+     * Busca o crea el usuario en la BD, verifica que no esté bloqueado y devuelve un token Sanctum.
      */
     public function firebaseLogin(Request $request): JsonResponse
     {
@@ -172,7 +189,7 @@ class AuthController extends Controller
         }
 
         $firebaseUid = $payload['sub'];
-        $email = $payload['email'] ?? null;
+        $email = isset($payload['email']) ? strtolower(trim($payload['email'])) : null;
 
         if (!$email) {
             Log::warning('firebaseLogin rechazado: Token sin email', [
@@ -204,8 +221,9 @@ class AuthController extends Controller
                     'firebase_uid' => $firebaseUid,
                     'email' => $email,
                     'full_name' => $request->input('full_name', $payload['name'] ?? 'Usuario'),
-                    'password' => Hash::make(Str::random(32)),
+                    'password' => Str::random(32),
                     'role' => self::isMasterAdminEmail($email) ? self::SUPERADMIN_ROLE : self::STUDENT_ROLE,
+                    'status' => User::STATUS_ACTIVE,
                 ]);
                 $isNewUser = true;
 
@@ -216,12 +234,27 @@ class AuthController extends Controller
             }
         }
 
+        // VERIFICACIÓN CRÍTICA DE SEGURIDAD: Rechazar cuenta bloqueada antes de emitir token Sanctum
+        if ($user->isBlocked()) {
+            $user->tokens()->delete();
+
+            Log::warning('firebaseLogin rechazado: Usuario bloqueado en PostgreSQL', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'status' => $user->status,
+            ]);
+
+            return response()->json([
+                'code' => 'ACCOUNT_BLOCKED',
+                'message' => 'Tu cuenta ha sido bloqueada o suspendida por un administrador. Contacta a soporte institucional.',
+            ], 403);
+        }
+
         // Ascenso automático de correos maestros (cubre usuarios ya existentes)
         $this->ensureMasterAdminRole($user);
         $user->forceFill(['last_login_at' => now()])->save();
 
-        // Limpiar tokens obsoletos (> 1 minuto de antigüedad) para evitar condiciones de carrera
-        // entre peticiones simultáneas del frontend (login explícito y listener onAuthStateChanged)
+        // Limpiar tokens obsoletos (> 1 minuto de antigüedad)
         $user->tokens()->where('created_at', '<', now()->subMinute())->delete();
 
         // Emisión explícita del token Sanctum
@@ -232,7 +265,6 @@ class AuthController extends Controller
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -253,6 +285,164 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Valida que el correo exista y no esté bloqueado antes/durante el flujo de recuperación de contraseña.
+     * Genera además un token de respaldo en password_resets.
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $user = User::where('email', $email)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No encontramos ninguna cuenta registrada con ese correo electrónico.',
+            ], 404);
+        }
+
+        if ($user->isBlocked()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'ACCOUNT_BLOCKED',
+                'message' => 'Tu cuenta se encuentra bloqueada. Contacta a soporte institucional.',
+            ], 403);
+        }
+
+        $plainToken = Str::random(64);
+        DB::table('password_resets')->updateOrInsert(
+            ['email' => $email],
+            [
+                'token' => Hash::make($plainToken),
+                'created_at' => now(),
+            ]
+        );
+
+        Log::info('Solicitud de recuperación de contraseña procesada', [
+            'user_id' => $user->id,
+            'email' => $email,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Se ha enviado el enlace de recuperación a tu correo electrónico.',
+        ]);
+    }
+
+    /**
+     * Sincroniza la nueva contraseña en PostgreSQL tras restablecimiento por Firebase o token de reset.
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'token' => ['nullable', 'string'],
+            'firebase_oob_verified' => ['nullable', 'boolean'],
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $user = User::where('email', $email)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se encontró una cuenta asociada a este correo.',
+            ], 404);
+        }
+
+        if ($user->isBlocked()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'ACCOUNT_BLOCKED',
+                'message' => 'Tu cuenta está bloqueada.',
+            ], 403);
+        }
+
+        // Si no viene verificado por oobCode de Firebase, validar el token de password_resets
+        if (empty($validated['firebase_oob_verified'])) {
+            $resetRow = DB::table('password_resets')->where('email', $email)->first();
+            if (!$resetRow || empty($validated['token']) || !Hash::check($validated['token'], $resetRow->token)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El enlace o código de recuperación es inválido o ha expirado.',
+                ], 422);
+            }
+        }
+
+        // User tiene cast 'password' => 'hashed', por lo que se asigna en texto plano sin doble Hash::make
+        $user->password = $validated['password'];
+        $user->save();
+
+        DB::table('password_resets')->where('email', $email)->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contraseña restablecida correctamente. Ya puedes iniciar sesión.',
+        ]);
+    }
+
+    /**
+     * Cambia la contraseña del usuario autenticado verificando su contraseña actual
+     * (en PostgreSQL o mediante reautenticación verificada de Firebase) y evitando doble hasheo.
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'No autenticado.'], 401);
+        }
+
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password' => ['required', 'string', 'min:8', 'confirmed'],
+            'firebase_token' => ['nullable', 'string'],
+        ]);
+
+        $isCurrentPasswordValid = Hash::check($validated['current_password'], $user->password);
+
+        // Si el usuario fue creado vía Firebase Auth (donde su clave real se valida en Firebase),
+        // aceptamos el ID token recién emitido tras reauthenticateWithCredential + updatePassword
+        if (!$isCurrentPasswordValid && !empty($validated['firebase_token'])) {
+            $firebaseService = new FirebaseAuthService();
+            $payload = $firebaseService->verifyIdToken($validated['firebase_token']);
+            if (
+                $payload &&
+                (
+                    ($payload['sub'] ?? '') === $user->firebase_uid ||
+                    strtolower($payload['email'] ?? '') === strtolower($user->email)
+                )
+            ) {
+                $isCurrentPasswordValid = true;
+            }
+        }
+
+        if (!$isCurrentPasswordValid) {
+            return response()->json([
+                'success' => false,
+                'message' => 'La contraseña actual ingresada es incorrecta.',
+            ], 422);
+        }
+
+        // El modelo User tiene 'password' => 'hashed' en $casts; asignar directo evita doble hasheo
+        $user->password = $validated['new_password'];
+        $user->save();
+
+        Log::info('Contraseña actualizada exitosamente por el usuario', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contraseña actualizada exitosamente.',
+        ]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $userId = $request->user()?->id;
@@ -269,10 +459,14 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
-        Log::info('Endpoint /auth/me consultado con éxito', [
-            'user_id' => $user?->id,
-            'email' => $user?->email,
-        ]);
+        if ($user && $user->isBlocked()) {
+            $user->tokens()->delete();
+
+            return response()->json([
+                'code' => 'ACCOUNT_BLOCKED',
+                'message' => 'Tu cuenta ha sido bloqueada o suspendida por un administrador.',
+            ], 403);
+        }
 
         return response()->json(['user' => $user]);
     }

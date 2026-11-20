@@ -14,7 +14,7 @@
 ========================================== */
 
 /* ==========================================
-   BASE
+   BASE 
 ========================================== */
 
 /* ==========================================
@@ -636,4 +636,506 @@
     color: #f87171;
     cursor: pointer;
     font-size: 1rem;
+}
+
+
+/* ==========================================
+   MARKDOWN & LATEX RENDERING (DARK THEME)
+========================================== */
+
+.md-user-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #ffffff;
+    line-height: 1.55;
+}
+
+.md-container {
+    white-space: normal;
+    word-break: break-word;
+    color: #f1f5f9;
+    font-size: 0.92rem;
+    line-height: 1.65;
+}
+
+/* Títulos (h1, h2, h3) */
+.md-title {
+    font-weight: 700;
+    line-height: 1.35;
+    margin-top: 14px;
+    margin-bottom: 8px;
+}
+
+.md-container > .md-title:first-child {
+    margin-top: 0;
+}
+
+.md-title--h1 {
+    font-size: 1.18rem;
+    color: #ffffff;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1e2d56;
+}
+
+.md-title--h2 {
+    font-size: 1.05rem;
+    color: #a78bfa;
+}
+
+.md-title--h3 {
+    font-size: 0.96rem;
+    color: #34d399;
+}
+
+/* Párrafos y énfasis */
+.md-paragraph {
+    margin: 0 0 10px 0;
+    color: #e2e8f0;
+}
+
+.md-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+.md-strong {
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.md-italic {
+    font-style: italic;
+    color: #cbd5e1;
+}
+
+/* Listas ordenadas y desordenadas */
+.md-list {
+    margin: 8px 0 12px 0;
+    padding-left: 22px;
+    color: #e2e8f0;
+}
+
+.md-list--ul {
+    list-style-type: disc;
+}
+
+.md-list--ol {
+    list-style-type: decimal;
+}
+
+.md-list-item {
+    margin-bottom: 5px;
+    line-height: 1.6;
+}
+
+.md-list-item::marker {
+    color: #6366f1;
+    font-weight: 600;
+}
+
+/* Citas / Notas destacadas */
+.md-blockquote {
+    margin: 10px 0;
+    padding: 10px 14px;
+    background: rgba(99, 102, 241, 0.08);
+    border-left: 3px solid #6366f1;
+    border-radius: 0 10px 10px 0;
+    color: #cbd5e1;
+    font-style: italic;
+}
+
+/* Código en línea y bloques de código */
+.md-code-inline {
+    font-family: "Fira Code", Consolas, Monaco, monospace;
+    font-size: 0.84rem;
+    background: rgba(99, 102, 241, 0.14);
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    color: #c4b5fd;
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+
+.md-code-block {
+    margin: 12px 0;
+    padding: 14px 16px;
+    background: #070c1b;
+    border: 1px solid #1e2d56;
+    border-radius: 12px;
+    overflow-x: auto;
+    font-family: "Fira Code", Consolas, Monaco, monospace;
+    font-size: 0.84rem;
+    line-height: 1.55;
+    color: #e2e8f0;
+}
+
+.md-code-block code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: inherit;
+}
+
+/* Tablas GFM */
+.md-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    margin: 12px 0;
+    border-radius: 10px;
+    border: 1px solid #1e2d56;
+}
+
+.md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    text-align: left;
+}
+
+.md-thead {
+    background: #091024;
+    border-bottom: 1px solid #1e2d56;
+}
+
+.md-th {
+    padding: 10px 12px;
+    font-weight: 600;
+    color: #a5b4fc;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+}
+
+.md-td {
+    padding: 9px 12px;
+    border-top: 1px solid #162242;
+    color: #e2e8f0;
+}
+
+.md-tbody .md-tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Separador horizontal */
+.md-divider {
+    border: none;
+    border-top: 1px solid #1e2d56;
+    margin: 14px 0;
+}
+
+/* Ecuaciones matemáticas KaTeX */
+.md-container .katex {
+    font-size: 1.04em;
+    color: #f8fafc;
+}
+
+.md-container .katex-display {
+    margin: 12px 0;
+    padding: 10px 14px;
+    background: rgba(8, 12, 22, 0.65);
+    border: 1px solid #1a274c;
+    border-radius: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+
+/* ==========================================
+   TUTOR WORKSPACE & OFF-CANVAS HISTORY DRAWER
+========================================== */
+
+.tutor-workspace {
+    width: 100%;
+    display: block;
+}
+
+.tutor-chat-panel {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Botón "Ver Historial" en el Header superior derecho */
+.history-toggle-btn {
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border, #1a2238);
+    background: #0d1734;
+    color: #e2e8f0;
+    font-size: 0.86rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.history-toggle-btn i {
+    color: var(--primary, #6366f1);
+    font-size: 0.95rem;
+}
+
+.history-toggle-btn:hover,
+.history-toggle-btn--active {
+    background: rgba(99, 102, 241, 0.16);
+    border-color: var(--primary, #6366f1);
+    color: #ffffff;
+}
+
+.history-toggle-btn__badge {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.25);
+    color: #c7d2fe;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+/* Fondo oscuro semitransparente (Overlay) */
+.history-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 8, 18, 0.65);
+    backdrop-filter: blur(2px);
+    z-index: 1040;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+}
+
+.history-overlay.history-overlay--open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* Panel lateral deslizable desde la derecha (Off-canvas Drawer) */
+.history-sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 340px;
+    max-width: 88vw;
+    height: 100vh;
+    z-index: 1050;
+    background-color: var(--bg-card, #0a1128);
+    border-left: 1px solid var(--border, #1a2238);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+    padding: 22px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+}
+
+.history-sidebar.history-sidebar--open {
+    transform: translateX(0);
+}
+
+.history-sidebar__header {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border, #1a2238);
+    flex-shrink: 0;
+}
+
+.history-sidebar__top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.history-sidebar__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #ffffff;
+}
+
+.history-sidebar__title i {
+    color: var(--primary, #6366f1);
+    font-size: 1rem;
+}
+
+.history-sidebar__title h2 {
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+/* Botón Cerrar (X) dentro del Sidebar */
+.history-close-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid var(--border, #1a2238);
+    background: #0d1734;
+    color: var(--text-secondary, #a0aec0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.history-close-btn:hover {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #f87171;
+}
+
+.new-chat-btn {
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #04130d;
+    font-size: 0.86rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.18);
+}
+
+.new-chat-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    opacity: 0.95;
+}
+
+.new-chat-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Lista con scroll independiente que ocupa el resto del alto de la pantalla */
+.history-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.history-list::-webkit-scrollbar {
+    width: 5px;
+}
+
+.history-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+    background: #1e2d56;
+    border-radius: 6px;
+}
+
+.history-list::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+}
+
+.history-item {
+    width: 100%;
+    text-align: left;
+    background: #0d1734;
+    border: 1px solid #162242;
+    border-radius: 12px;
+    padding: 11px 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.history-item:hover {
+    background: #132046;
+    border-color: #283a6e;
+}
+
+.history-item--active {
+    background: rgba(99, 102, 241, 0.14);
+    border-color: #6366f1;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.14);
+}
+
+.history-item__icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.12);
+    color: #a5b4fc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.history-item--active .history-item__icon {
+    background: #6366f1;
+    color: #ffffff;
+}
+
+.history-item__info {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.history-item__title {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-item__date {
+    font-size: 0.72rem;
+    color: var(--text-muted, #64748b);
+}
+
+.history-empty {
+    padding: 36px 14px;
+    text-align: center;
+    color: var(--text-muted, #64748b);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.84rem;
+}
+
+.history-empty i {
+    font-size: 1.5rem;
+    color: #475569;
+}
+
+.history-loading-state {
+    padding: 36px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-secondary, #a0aec0);
+    font-size: 0.9rem;
 }

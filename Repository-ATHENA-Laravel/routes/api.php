@@ -1,46 +1,46 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TestDbController;
+use App\Http\Controllers\Auth\AuthController;
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-| Aquí centralizamos las rutas de diagnóstico y pruebas del sistema.
-| Se utiliza un prefijo 'test-db' para mantener el orden.
 */
 
 Route::prefix('test-db')->group(function () {
-    // Diagnóstico de integridad de perfiles
     Route::get('/integrity', [TestDbController::class, 'verifyIntegrity']);
-
-    // Diagnóstico de estructura académica (Banco de preguntas)
     Route::get('/academic', [TestDbController::class, 'verifyAcademicStructure']);
-
-    // Diagnóstico de simulacros e historial
     Route::get('/simulators', [TestDbController::class, 'verifySimulators']);
-
-    // Diagnóstico de monetización e IA
     Route::get('/commercial-ai', [TestDbController::class, 'verifyCommercialAndAi']);
-
-    // Diagnóstico de arquitectura híbrida (MySQL + MongoDB Atlas)
     Route::get('/hybrid', [TestDbController::class, 'verifyHybridDatabase']);
-
-    // Diagnóstico de conectividad con Gemini Flash API
     Route::get('/gemini', [TestDbController::class, 'testGeminiConnection']);
 });
 
-// Modular System Routes (Phase 0 alignment)
+// Autenticación pública y protegida
 Route::prefix('auth')->group(base_path('routes/auth.php'));
-Route::prefix('users')->group(base_path('routes/users.php'));
-Route::prefix('subjects')->group(base_path('routes/subjects.php'));
-Route::prefix('topics')->group(base_path('routes/topics.php'));
-Route::prefix('questions')->group(base_path('routes/questions.php'));
-Route::prefix('exams')->group(base_path('routes/exams.php'));
-Route::prefix('progress')->group(base_path('routes/progress.php'));
-Route::prefix('profile')->group(base_path('routes/profile.php'));
-Route::prefix('ai')->group(base_path('routes/ai.php'));
-Route::prefix('notifications')->group(base_path('routes/notifications.php'));
+
+// Endpoint estándar de sesión verificada
+Route::middleware(['auth:sanctum', 'active'])->get('/user', [AuthController::class, 'me']);
+
+// Rutas Administrativas (RBAC estricto: solo superadmin, admin y support activos)
+Route::middleware(['auth:sanctum', 'active', 'role:superadmin,super_admin,admin,support'])->group(function () {
+    Route::prefix('users')->group(base_path('routes/users.php'));
+    Route::prefix('subjects')->group(base_path('routes/subjects.php'));
+    Route::prefix('topics')->group(base_path('routes/topics.php'));
+    Route::prefix('questions')->group(base_path('routes/questions.php'));
+});
+
+// Rutas de Estudiante / Plataforma Académica (RBAC + sesión activa verificada)
+Route::middleware(['auth:sanctum', 'active', 'role:student,superadmin,super_admin,admin,support'])->group(function () {
+    Route::prefix('exams')->group(base_path('routes/exams.php'));
+    Route::prefix('progress')->group(base_path('routes/progress.php'));
+    Route::prefix('profile')->group(base_path('routes/profile.php'));
+    Route::prefix('ai')->group(base_path('routes/ai.php'));
+    Route::prefix('notifications')->group(base_path('routes/notifications.php'));
+});
+
+// Suscripciones y Webhook Wompi
 Route::prefix('subscriptions')->group(base_path('routes/subscriptions.php'));
