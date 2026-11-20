@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Validator;
 
 class WompiWebhookController extends Controller
 {
+    //Recibir los eventos de pasarela de pago wompi y actualizar el estado de la subscripcion en la base de datos
     public function handle(Request $request, WompiPaymentService $wompi): JsonResponse
     {
         $event = $request->json()->all();
@@ -35,6 +36,7 @@ class WompiWebhookController extends Controller
             return response()->json(['message' => 'Los datos de la transacción Wompi son inválidos.'], 422);
         }
 
+        //Validar dtos especificos de la transaccion
         $validator = Validator::make($transactionData, [
             'id' => ['required', 'string', 'max:255'],
             'reference' => ['required', 'string', 'max:255'],
@@ -49,6 +51,7 @@ class WompiWebhookController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+
 
         $data = $validator->validated();
         $subscriptionId = $wompi->subscriptionIdFromReference($data['reference']);
@@ -78,6 +81,7 @@ class WompiWebhookController extends Controller
             return response()->json(['message' => 'La referencia, el monto o la moneda no coinciden.'], 422);
         }
 
+        //hacer la respetiva suscripcion
         DB::transaction(function () use ($subscription, $data): void {
             $lockedSubscription = Subscription::query()
                 ->with('subscriptionPlan')

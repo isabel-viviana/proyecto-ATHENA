@@ -13,6 +13,7 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentController extends Controller
 {
+    //Dejo privado los planes para el respectivo pago
     private const PLANS = [
         'monthly' => [
             'storage_name' => 'ATHENA Pro',
@@ -31,6 +32,7 @@ class PaymentController extends Controller
         ],
     ];
 
+    //Funcion de index para mostrar los planes
     public function index(): JsonResponse
     {
         $plans = SubscriptionPlan::query()
@@ -57,6 +59,7 @@ class PaymentController extends Controller
         ]);
     }
 
+    //Funcion de store para crear la suscripcion y generar el pago en la pasarela de pago wompi
     public function store(Request $request, WompiPaymentService $wompi): JsonResponse
     {
         $data = $request->validate([
@@ -108,6 +111,7 @@ class PaymentController extends Controller
         return response()->json(['data' => $result], 201);
     }
 
+    //Funcion de show para mostrar la suscripcion y su estado en vivo
     public function show(Request $request, int $subscriptionId): JsonResponse
     {
         $subscription = Subscription::query()
