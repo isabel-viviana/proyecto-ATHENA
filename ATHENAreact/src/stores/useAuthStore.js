@@ -13,7 +13,7 @@ import {
     reauthenticateWithCredential,
     updatePassword,
 } from "firebase/auth";
-import { auth as firebaseAuth } from "../config/firebase";
+import { auth as firebaseAuth, googleProvider } from "../config/firebase";
 import api, { setAuthToken } from "../api/axios";
 
 /**
@@ -70,19 +70,31 @@ let _isAuthenticating = false;
 let _blockedListenerRegistered = false;
 
 /**
- * Retorna la ruta inicial de dashboard correspondiente al rol del usuario.
+ * Normaliza cualquier variante de rol de la BD a los 3 únicos roles activos:
+ * 'superadmin', 'admin' o 'student'.
+ */
+export const normalizeUserRole = (rawRole) => {
+    const clean = String(rawRole || "student").toLowerCase().trim();
+    if (clean === "superadmin" || clean === "super_admin") {
+        return "superadmin";
+    }
+    if (clean === "admin" || clean === "support" || clean === "docente" || clean === "coordinador") {
+        return "admin";
+    }
+    return "student";
+};
+
+/**
+ * Retorna la ruta inicial de dashboard correspondiente al rol real del usuario.
  */
 export const getRedirectPathByRole = (role) => {
-    switch (role) {
+    const normalized = normalizeUserRole(role);
+    switch (normalized) {
         case "superadmin":
-        case "super_admin":
             return "/dashboard/superadmin";
         case "admin":
             return "/dashboard/admin";
-        case "support":
-            return "/support/dashboard";
         case "student":
-        case "user":
         default:
             return "/dashboard";
     }
@@ -94,6 +106,8 @@ const clearAllLocalAuthData = () => {
         localStorage.removeItem("athena_token");
         localStorage.removeItem("athena_admin_token");
         localStorage.removeItem("athena_admin_user");
+        localStorage.removeItem("athena_student");
+        sessionStorage.removeItem("athena_blocked_notice");
     } catch {
         // Ignorar errores de storage
     }
@@ -185,12 +199,14 @@ export const useAuthStore = create((set, get) => ({
                 throw new Error("El servidor no devolvió la sesión o token de usuario.");
             }
 
+            const normalizedRole = normalizeUserRole(user.role);
+            const normalizedUser = { ...user, role: normalizedRole };
             setAuthToken(token);
 
             set({
-                user,
+                user: normalizedUser,
                 token,
-                role: user.role || "student",
+                role: normalizedRole,
                 isAuthenticated: true,
                 isInitialized: true,
                 isAuthLoading: false,
@@ -234,7 +250,8 @@ export const useAuthStore = create((set, get) => ({
         }
 
         try {
-            const provider = new GoogleAuthProvider();
+            const provider = googleProvider || new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: "select_account" });
             const userCredential = await signInWithPopup(firebaseAuth, provider);
             const idToken = await userCredential.user.getIdToken();
 
@@ -252,12 +269,14 @@ export const useAuthStore = create((set, get) => ({
                 throw new Error("El servidor no devolvió la sesión o token de usuario.");
             }
 
+            const normalizedRole = normalizeUserRole(user.role);
+            const normalizedUser = { ...user, role: normalizedRole };
             setAuthToken(token);
 
             set({
-                user,
+                user: normalizedUser,
                 token,
-                role: user.role || "student",
+                role: normalizedRole,
                 isAuthenticated: true,
                 isInitialized: true,
                 isAuthLoading: false,
@@ -315,12 +334,14 @@ export const useAuthStore = create((set, get) => ({
                 throw new Error("El servidor no devolvió la sesión o token de usuario.");
             }
 
+            const normalizedRole = normalizeUserRole(user.role);
+            const normalizedUser = { ...user, role: normalizedRole };
             setAuthToken(token);
 
             set({
-                user,
+                user: normalizedUser,
                 token,
-                role: user.role || "student",
+                role: normalizedRole,
                 isAuthenticated: true,
                 isInitialized: true,
                 isAuthLoading: false,
@@ -377,15 +398,18 @@ export const useAuthStore = create((set, get) => ({
                 throw new Error("No se pudo obtener el perfil de usuario.");
             }
 
+            const normalizedRole = normalizeUserRole(user.role);
+            const normalizedUser = { ...user, role: normalizedRole };
+
             set({
-                user,
+                user: normalizedUser,
                 token,
-                role: user.role || "student",
+                role: normalizedRole,
                 isAuthenticated: true,
                 isInitialized: true,
                 isAuthLoading: false,
             });
-            return user;
+            return normalizedUser;
         } catch (error) {
             const status = error.response?.status;
             if (status === 401 || status === 403) {
@@ -459,10 +483,11 @@ export const useAuthStore = create((set, get) => ({
                     const res = await api.get("/auth/me");
                     const user = res.data?.user;
                     if (user) {
+                        const normalizedRole = normalizeUserRole(user.role);
                         set({
-                            user,
+                            user: { ...user, role: normalizedRole },
                             token: currentToken,
-                            role: user.role || "student",
+                            role: normalizedRole,
                             isAuthenticated: true,
                             isInitialized: true,
                             isAuthLoading: false,
@@ -519,11 +544,12 @@ export const useAuthStore = create((set, get) => ({
                 const token = res.data?.token || res.data?.access_token;
 
                 if (user && token) {
+                    const normalizedRole = normalizeUserRole(user.role);
                     setAuthToken(token);
                     set({
-                        user,
+                        user: { ...user, role: normalizedRole },
                         token,
-                        role: user.role || "student",
+                        role: normalizedRole,
                         isAuthenticated: true,
                         isInitialized: true,
                         isAuthLoading: false,

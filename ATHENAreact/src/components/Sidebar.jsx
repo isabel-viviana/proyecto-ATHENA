@@ -1,12 +1,15 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import "./Sidebar.css";
 import logo from "../assets/images/Zorrito_8.png";
 import { getUnreadNotificationsCount } from "../api/studentQuestions";
+import useAuthStore from "../stores/useAuthStore";
 
 const Sidebar = () => {
     const location = useLocation();
+    const navigate = useNavigate();
     const [unreadCount, setUnreadCount] = useState(0);
+    const logout = useAuthStore((state) => state.logout);
 
     useEffect(() => {
         const fetchUnread = async () => {
@@ -15,7 +18,7 @@ const Sidebar = () => {
                 if (res && res.success && typeof res.count === "number") {
                     setUnreadCount(res.count);
                 }
-            } catch (err) {
+            } catch {
                 // Silencioso en caso de no estar autenticado
             }
         };
@@ -30,6 +33,11 @@ const Sidebar = () => {
             : location.pathname === path;
 
         return active ? "sidebar__link--active" : "";
+    };
+
+    const handleLogout = async () => {
+        await logout();
+        navigate("/login", { replace: true });
     };
 
     return (
@@ -126,6 +134,17 @@ const Sidebar = () => {
                     )}
                 </Link>
             </nav>
+
+            <div className="sidebar__footer">
+                <button
+                    type="button"
+                    className="sidebar__logout-btn"
+                    onClick={handleLogout}
+                >
+                    <i className="fas fa-sign-out-alt"></i>
+                    <span>Cerrar sesión</span>
+                </button>
+            </div>
         </aside>
     );
 };

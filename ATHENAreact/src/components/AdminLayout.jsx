@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import "./AdminLayout.css";
 import logoImg from "../assets/images/Zorrito_8.png";
-import useAuthStore from "../stores/useAuthStore";
+import useAuthStore, { normalizeUserRole } from "../stores/useAuthStore";
 import { getAdminStats } from "../api/documents";
 
 const AdminLayout = () => {
@@ -26,39 +26,16 @@ const AdminLayout = () => {
     }
 
     const currentUser = storeUser || storedAdmin || {};
-    const rawUserRole = String(storeRole || currentUser?.role || "admin").toLowerCase().trim();
-    const actualRole = rawUserRole === "super_admin" ? "superadmin" : rawUserRole;
+    const actualRole = normalizeUserRole(storeRole || currentUser?.role || "admin");
     const isActualSuperAdmin = actualRole === "superadmin";
-    const isActualSupport = actualRole === "support";
 
-    const isSuper =
-        location.pathname.startsWith("/super") ||
-        location.pathname.startsWith("/dashboard/superadmin");
-    const isSupport = location.pathname.startsWith("/support");
-    const isAdmin =
-        (location.pathname.startsWith("/admin") ||
-            location.pathname.startsWith("/dashboard/admin")) &&
-        !isSuper &&
-        !isSupport;
-
-    let currentRoleTitle = "Super Administrador";
-    let roleBadge = "SUPER ADMIN";
-    let activeDashboardPath = isActualSuperAdmin
+    const currentRoleTitle = isActualSuperAdmin
+        ? "Super Administrador"
+        : "Administrador Académico";
+    const roleBadge = isActualSuperAdmin ? "SUPER ADMIN" : "ADMIN";
+    const activeDashboardPath = isActualSuperAdmin
         ? "/dashboard/superadmin"
-        : isActualSupport
-        ? "/support/dashboard"
         : "/dashboard/admin";
-
-    if (isAdmin && !isActualSuperAdmin) {
-        currentRoleTitle = "Administrador Académico";
-        roleBadge = "ADMIN";
-    } else if (isSupport || isActualSupport) {
-        currentRoleTitle = "Soporte Técnico";
-        roleBadge = "SUPPORT";
-    } else if (!isSuper && isActualSuperAdmin) {
-        currentRoleTitle = "Super Administrador";
-        roleBadge = "SUPER ADMIN";
-    }
 
     const fetchHeaderStats = async () => {
         try {
@@ -82,10 +59,18 @@ const AdminLayout = () => {
     const isQuestionsSection = location.pathname === "/admin/questions";
     const isSubjectsSection = location.pathname === "/admin/subjects";
     const isExamsSection = location.pathname === "/admin/exams";
+    const isSupportSection =
+        location.pathname === "/admin/support" ||
+        location.pathname.startsWith("/support");
 
-    const usersBadge = layoutStats?.users?.total !== undefined ? String(layoutStats.users.total) : null;
-    const questionsBadge = layoutStats?.questions?.total !== undefined ? String(layoutStats.questions.total) : null;
-    const subjectsBadge = layoutStats?.catalog?.total_subjects !== undefined ? String(layoutStats.catalog.total_subjects) : null;
+    const usersBadge =
+        layoutStats?.users?.total !== undefined ? String(layoutStats.users.total) : null;
+    const questionsBadge =
+        layoutStats?.questions?.total !== undefined ? String(layoutStats.questions.total) : null;
+    const subjectsBadge =
+        layoutStats?.catalog?.total_subjects !== undefined
+            ? String(layoutStats.catalog.total_subjects)
+            : null;
     const examsBadge =
         layoutStats?.academic_activity?.total_exam_attempts !== undefined
             ? String(layoutStats.academic_activity.total_exam_attempts)
@@ -98,13 +83,17 @@ const AdminLayout = () => {
             path: activeDashboardPath,
             isCurrent: location.pathname.includes("/dashboard"),
         },
-        {
-            label: "Usuarios",
-            icon: "fa-solid fa-users",
-            path: "/admin/users",
-            badge: usersBadge,
-            isCurrent: isUsersSection,
-        },
+        ...(isActualSuperAdmin
+            ? [
+                  {
+                      label: "Usuarios y Roles",
+                      icon: "fa-solid fa-users-gear",
+                      path: "/admin/users",
+                      badge: usersBadge,
+                      isCurrent: isUsersSection,
+                  },
+              ]
+            : []),
         {
             label: "Banco ICFES",
             icon: "fa-solid fa-layer-group",
@@ -127,10 +116,10 @@ const AdminLayout = () => {
             isCurrent: isExamsSection,
         },
         {
-            label: "Panel de Soporte",
+            label: "Soporte y Auditoría",
             icon: "fa-solid fa-headset",
-            path: "/support/dashboard",
-            isCurrent: isSupport,
+            path: "/admin/support",
+            isCurrent: isSupportSection,
         },
     ];
 
@@ -151,16 +140,16 @@ const AdminLayout = () => {
             icon: "fa-solid fa-triangle-exclamation",
             color: "#ef4444",
             title: `${layoutStats.questions.with_warnings} reactivo(s) con observaciones`,
-            desc: "Revisar advertencias en la bandeja de auditoría.",
-            path: "/support/dashboard",
+            desc: "Revisar advertencias en el módulo de soporte y auditoría.",
+            path: "/admin/support",
         });
     }
-    if ((layoutStats?.users?.suspended || 0) > 0) {
+    if (isActualSuperAdmin && (layoutStats?.users?.suspended || 0) > 0) {
         systemAlerts.push({
             id: "suspended-users",
             icon: "fa-solid fa-user-lock",
             color: "#3b82f6",
-            title: `${layoutStats.users.suspended} cuenta(s) suspendida(s)`,
+            title: `${layoutStats.users.suspended} cuenta(s) bloqueada(s)`,
             desc: "Usuarios con acceso restringido temporalmente.",
             path: "/admin/users",
         });
@@ -171,7 +160,7 @@ const AdminLayout = () => {
         const q = searchText.trim();
         if (!q) return;
 
-        if (isUsersSection || q.includes("@")) {
+        if (isActualSuperAdmin && (isUsersSection || q.includes("@"))) {
             navigate(`/admin/users?search=${encodeURIComponent(q)}`);
         } else {
             navigate(`/admin/questions?search=${encodeURIComponent(q)}`);
@@ -179,10 +168,8 @@ const AdminLayout = () => {
     };
 
     const handleLogout = async () => {
-        localStorage.removeItem("athena_admin_token");
-        localStorage.removeItem("athena_admin_user");
         await logout();
-        navigate("/admin/login");
+        navigate("/login", { replace: true });
     };
 
     const displayUserName = currentUser?.full_name || currentUser?.name || "Administrador";
@@ -211,37 +198,6 @@ const AdminLayout = () => {
                     >
                         <i className="fa-solid fa-xmark"></i>
                     </button>
-                </div>
-
-                <div className="admin-sidebar__roles-box">
-                    <div className="admin-sidebar__roles-title">Vistas Autorizadas</div>
-                    <div className="admin-sidebar__roles-pills">
-                        {isActualSuperAdmin && (
-                            <Link
-                                to="/dashboard/superadmin"
-                                className={`admin-sidebar__role-pill ${isSuper ? "admin-sidebar__role-pill--active" : ""}`}
-                                onClick={() => setSidebarOpen(false)}
-                            >
-                                Super
-                            </Link>
-                        )}
-                        {!isActualSupport && (
-                            <Link
-                                to="/dashboard/admin"
-                                className={`admin-sidebar__role-pill ${location.pathname === "/dashboard/admin" ? "admin-sidebar__role-pill--active" : ""}`}
-                                onClick={() => setSidebarOpen(false)}
-                            >
-                                Admin
-                            </Link>
-                        )}
-                        <Link
-                            to="/support/dashboard"
-                            className={`admin-sidebar__role-pill ${isSupport ? "admin-sidebar__role-pill--active" : ""}`}
-                            onClick={() => setSidebarOpen(false)}
-                        >
-                            Soporte
-                        </Link>
-                    </div>
                 </div>
 
                 <nav className="admin-sidebar__nav">
@@ -295,18 +251,21 @@ const AdminLayout = () => {
                         </button>
                         <div className="admin-header__breadcrumb">
                             <span className="admin-header__crumb-root">
-                                <i className="fa-solid fa-shield-halved"></i> Panel Admin
+                                <i className="fa-solid fa-shield-halved"></i>{" "}
+                                {isActualSuperAdmin ? "Panel SuperAdmin" : "Panel Admin"}
                             </span>
                             <span className="admin-header__crumb-sep">/</span>
                             <span className="admin-header__crumb-current">
                                 {isUsersSection
-                                    ? "Gestión de Usuarios"
+                                    ? "Gestionar Usuarios y Roles"
                                     : isQuestionsSection
                                     ? "Banco ICFES"
                                     : isSubjectsSection
                                     ? "Materias y Temas"
                                     : isExamsSection
                                     ? "Simulacros y Actividad"
+                                    : isSupportSection
+                                    ? "Soporte y Auditoría"
                                     : currentRoleTitle}
                             </span>
                         </div>
@@ -326,7 +285,9 @@ const AdminLayout = () => {
                                 placeholder={
                                     isUsersSection
                                         ? "Buscar usuario por nombre o correo..."
-                                        : "Buscar preguntas o usuarios (@correo)..."
+                                        : isActualSuperAdmin
+                                        ? "Buscar preguntas o usuarios (@correo)..."
+                                        : "Buscar preguntas del Banco ICFES..."
                                 }
                                 className="admin-header__search-input"
                             />
@@ -440,7 +401,7 @@ const AdminLayout = () => {
                         <button
                             type="button"
                             className="admin-header__action-btn"
-                            title="Salir al Login Administrativo"
+                            title="Cerrar sesión"
                             onClick={handleLogout}
                         >
                             <i className="fa-solid fa-power-off"></i>

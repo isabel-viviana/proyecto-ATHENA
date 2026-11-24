@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\UserController;
 
-Route::middleware(['auth:sanctum', 'active', 'role:admin,superadmin,super_admin'])->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'role:superadmin,super_admin'])->group(function () {
     Route::get('/', [UserController::class, 'index']);
     Route::post('/', [UserController::class, 'store']);
     Route::get('/{id}', [UserController::class, 'show']);

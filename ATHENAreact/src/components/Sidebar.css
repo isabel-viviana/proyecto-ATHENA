@@ -1,4 +1,4 @@
-﻿/* ==========================================
+/* ==========================================
    SIDEBAR
 ========================================== */
 
@@ -88,3 +88,32 @@
     padding: 2px 7px;
     border-radius: 999px;
 }
+
+.sidebar__footer {
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.sidebar__logout-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar__logout-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+}
+

@@ -89,7 +89,12 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $user->forceFill(['last_login_at' => now()])->save();
+        $normalizedRole = User::normalizeRole($user->role);
+        $updates = ['last_login_at' => now()];
+        if ($user->role !== $normalizedRole) {
+            $updates['role'] = $normalizedRole;
+        }
+        $user->forceFill($updates)->save();
 
         try {
             $token = $user->createToken('athena-spa')->plainTextToken;
@@ -252,7 +257,12 @@ class AuthController extends Controller
 
         // Ascenso automático de correos maestros (cubre usuarios ya existentes)
         $this->ensureMasterAdminRole($user);
-        $user->forceFill(['last_login_at' => now()])->save();
+        $normalizedRole = User::normalizeRole($user->role);
+        $updates = ['last_login_at' => now()];
+        if ($user->role !== $normalizedRole) {
+            $updates['role'] = $normalizedRole;
+        }
+        $user->forceFill($updates)->save();
 
         // Limpiar tokens obsoletos (> 1 minuto de antigüedad)
         $user->tokens()->where('created_at', '<', now()->subMinute())->delete();
@@ -466,6 +476,13 @@ class AuthController extends Controller
                 'code' => 'ACCOUNT_BLOCKED',
                 'message' => 'Tu cuenta ha sido bloqueada o suspendida por un administrador.',
             ], 403);
+        }
+
+        if ($user) {
+            $normalizedRole = User::normalizeRole($user->role);
+            if ($user->role !== $normalizedRole) {
+                $user->forceFill(['role' => $normalizedRole])->save();
+            }
         }
 
         return response()->json(['user' => $user]);

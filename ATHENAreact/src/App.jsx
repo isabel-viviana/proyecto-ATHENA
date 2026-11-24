@@ -55,6 +55,7 @@ import Notificaciones from "./pages/profiles/profile_notifications";
 import ForgotPassword from "./pages/authentications/forgot_password";
 import ResetPassword from "./pages/authentications/reset_password";
 import Payments from "./pages/subscriptions/payments";
+import PaymentReturn from "./pages/subscriptions/payment_return";
 
 // Auth & Route Guards
 import useAuthStore from "./stores/useAuthStore";
@@ -95,6 +96,10 @@ function App() {
                 <Route path="/forgotPassword" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
 
+                {/* Ruta pública de retorno desde Wompi Web Checkout */}
+                <Route path="/payment-return" element={<PaymentReturn />} />
+                <Route path="/payments/return" element={<PaymentReturn />} />
+
                 {/* Ruta de Autenticación Administrativa */}
                 <Route
                     path="/admin/login"
@@ -105,19 +110,20 @@ function App() {
                     }
                 />
 
-                {/* Rutas del Módulo Administrativo (AdminRoute: solo superadmin, admin, support) */}
+                {/* Rutas del Módulo Administrativo (AdminRoute: solo superadmin y admin) */}
                 <Route
                     element={
-                        <AdminRoute allowedRoles={["superadmin", "super_admin", "admin", "support"]}>
+                        <AdminRoute allowedRoles={["superadmin", "admin"]}>
                             <AdminLayout />
                         </AdminRoute>
                     }
                 >
                     <Route path="/dashboard/superadmin" element={<DashboardSuper />} />
                     <Route path="/dashboard/admin" element={<DashboardAdmin />} />
-                    <Route path="/super/dashboard" element={<DashboardSuper />} />
-                    <Route path="/admin/dashboard" element={<DashboardAdmin />} />
-                    <Route path="/support/dashboard" element={<DashboardSupport />} />
+                    <Route path="/super/dashboard" element={<Navigate to="/dashboard/superadmin" replace />} />
+                    <Route path="/admin/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
+                    <Route path="/admin/support" element={<DashboardSupport />} />
+                    <Route path="/support/dashboard" element={<Navigate to="/admin/support" replace />} />
                     <Route path="/admin/users" element={<Users />} />
                     <Route path="/admin/questions" element={<Questions />} />
                     <Route path="/admin/subjects" element={<Subjects />} />

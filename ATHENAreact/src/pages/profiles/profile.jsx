@@ -41,11 +41,11 @@ const Profile = () => {
 
     const handleLogout = async () => {
         try {
-            localStorage.removeItem("athena_token");
-            localStorage.removeItem("athena_student");
             await logout();
-        } catch {}
-        navigate("/login");
+        } catch {
+            // Ignorar errores de red durante el cierre de sesión
+        }
+        navigate("/login", { replace: true });
     };
 
     if (loading) {

@@ -44,8 +44,17 @@ class DatabaseSeeder extends Seeder
             }
 
             $admin->role = 'superadmin';
+            $admin->status = User::STATUS_ACTIVE;
             $admin->save();
         }
+
+        // 0.1. Cuenta base reproducible de Administrador Académico (rol 'admin')
+        $baseAdmin = User::firstOrNew(['email' => 'admin@athena.edu.co']);
+        $baseAdmin->full_name = 'Administrador Académico ATHENA';
+        $baseAdmin->password = 'Athena2026*';
+        $baseAdmin->role = 'admin';
+        $baseAdmin->status = User::STATUS_ACTIVE;
+        $baseAdmin->save();
 
         // 1. Usuarios (Tu usuario principal + 9 estudiantes aleatorios)
         $users = collect();

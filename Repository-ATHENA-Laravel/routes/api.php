@@ -1,8 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\TestDbController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Payments\PaymentController;
+use App\Http\Controllers\Payments\WompiWebhookController;
+use App\Http\Controllers\TestDbController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -45,3 +47,15 @@ Route::prefix('profile')->group(base_path('routes/profile.php'));
 Route::prefix('ai')->group(base_path('routes/ai.php'));
 Route::prefix('notifications')->group(base_path('routes/notifications.php'));
 Route::prefix('subscriptions')->group(base_path('routes/subscriptions.php'));
+
+// Pasarela de pagos Wompi (Web Checkout, Widget Oficial, Historial y Webhook firmado)
+Route::prefix('payments')->group(function () {
+    Route::post('/webhook', [WompiWebhookController::class, 'handle']);
+
+    Route::middleware(['auth:sanctum', 'active'])->group(function () {
+        Route::get('/plans', [PaymentController::class, 'index']);
+        Route::get('/history', [PaymentController::class, 'history']);
+        Route::post('/checkout', [PaymentController::class, 'store']);
+        Route::get('/subscriptions/{subscriptionId}', [PaymentController::class, 'show']);
+    });
+});

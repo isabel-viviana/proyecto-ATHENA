@@ -1,8 +1,11 @@
 import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import useAuthStore, { getRedirectPathByRole } from "../stores/useAuthStore";
+import useAuthStore, {
+    getRedirectPathByRole,
+    normalizeUserRole,
+} from "../stores/useAuthStore";
 
-const DEFAULT_STUDENT_ROLES = ["student", "user"];
+const DEFAULT_STUDENT_ROLES = ["student"];
 
 /**
  * Protege rutas que requieren autenticación y valida el rol permitido (allowedRoles).
@@ -54,11 +57,14 @@ export default function ProtectedRoute({
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    const currentRole = String(role || "student").toLowerCase();
+    const currentRole = normalizeUserRole(role);
+    const normalizedAllowed = Array.isArray(allowedRoles)
+        ? allowedRoles.map((r) => normalizeUserRole(r))
+        : [];
+
     if (
-        Array.isArray(allowedRoles) &&
-        allowedRoles.length > 0 &&
-        !allowedRoles.includes(currentRole)
+        normalizedAllowed.length > 0 &&
+        !normalizedAllowed.includes(currentRole)
     ) {
         return <Navigate to={getRedirectPathByRole(currentRole)} replace />;
     }

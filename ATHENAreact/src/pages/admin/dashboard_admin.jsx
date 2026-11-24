@@ -328,11 +328,11 @@ const DashboardAdmin = () => {
                             <button
                                 type="button"
                                 className="adm-quick-btn"
-                                onClick={() => navigate("/admin/users")}
+                                onClick={() => navigate("/admin/support")}
                             >
-                                <i className="fa-solid fa-users"></i>
-                                <span className="adm-quick-btn-title">Estudiantes</span>
-                                <span className="adm-quick-btn-desc">Consultar progreso académico</span>
+                                <i className="fa-solid fa-headset"></i>
+                                <span className="adm-quick-btn-title">Soporte y Auditoría</span>
+                                <span className="adm-quick-btn-desc">Verificación y alertas operativas</span>
                             </button>
                             <button
                                 type="button"

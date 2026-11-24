@@ -2,7 +2,11 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./login_admin.css";
 import ZorritoLogo from "../../assets/images/Zorrito6.png";
-import { useAuthStore, getRedirectPathByRole } from "../../stores/useAuthStore";
+import {
+    useAuthStore,
+    getRedirectPathByRole,
+    normalizeUserRole,
+} from "../../stores/useAuthStore";
 import { adminLogin } from "../../api/documents";
 import { setAuthToken } from "../../api/axios";
 
@@ -21,8 +25,9 @@ const LoginAdmin = () => {
 
     // Redirección si ya está autenticado con rol administrativo
     useEffect(() => {
-        if (isAuthenticated && ["superadmin", "super_admin", "admin", "support"].includes(role)) {
-            navigate(getRedirectPathByRole(role), { replace: true });
+        const normalized = normalizeUserRole(role);
+        if (isAuthenticated && ["superadmin", "admin"].includes(normalized)) {
+            navigate(getRedirectPathByRole(normalized), { replace: true });
         }
     }, [isAuthenticated, role, navigate]);
 
@@ -56,14 +61,14 @@ const LoginAdmin = () => {
                 tokenStr = data?.token || data?.access_token;
             }
 
-            const userRole = String(userObj?.role || "").toLowerCase().trim();
-
-            if (!["superadmin", "super_admin", "admin", "support", "docente", "coordinador"].includes(userRole)) {
+            const rawRole = String(userObj?.role || "").toLowerCase().trim();
+            if (!["superadmin", "super_admin", "admin", "support", "docente", "coordinador"].includes(rawRole)) {
                 setError("Esta cuenta no tiene privilegios administrativos.");
                 await logout();
                 setIsSubmitting(false);
                 return;
             }
+            const userRole = normalizeUserRole(rawRole);
 
             if (tokenStr && userObj) {
                 localStorage.setItem("athena_admin_token", tokenStr);

@@ -24,6 +24,27 @@ class User extends Authenticatable
     public const STATUS_ACTIVE = 'active';
     public const STATUS_BLOCKED = 'blocked';
 
+    public const ROLE_SUPERADMIN = 'superadmin';
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_STUDENT = 'student';
+
+    /**
+     * Normaliza cualquier variante de rol a los 3 únicos roles activos del sistema:
+     * 'superadmin', 'admin' o 'student'.
+     */
+    public static function normalizeRole(?string $role): string
+    {
+        $clean = strtolower(trim((string) $role));
+        if (in_array($clean, ['superadmin', 'super_admin'], true)) {
+            return self::ROLE_SUPERADMIN;
+        }
+        if (in_array($clean, ['admin', 'support', 'docente', 'coordinador'], true)) {
+            return self::ROLE_ADMIN;
+        }
+
+        return self::ROLE_STUDENT;
+    }
+
     /**
      * The attributes that are mass assignable.
      *
