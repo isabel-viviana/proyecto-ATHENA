@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Subject;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -10,7 +11,11 @@ class SubjectController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(['message' => 'List subjects placeholder']);
+        $subjects = Subject::with('topics')->get();
+        return response()->json([
+            'success' => true,
+            'data' => $subjects,
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -20,7 +25,11 @@ class SubjectController extends Controller
 
     public function show($id): JsonResponse
     {
-        return response()->json(['message' => 'Show subject placeholder']);
+        $subject = Subject::with('topics')->findOrFail($id);
+        return response()->json([
+            'success' => true,
+            'data' => $subject,
+        ]);
     }
 
     public function update(Request $request, $id): JsonResponse

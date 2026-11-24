@@ -44,4 +44,10 @@ return [
         'project_id' => env('FIREBASE_PROJECT_ID'),
     ],
 
+    'question_bank' => [
+        'base_url'  => env('QUESTION_BANK_BASE_URL', 'http://127.0.0.1:8001/api/v1'),
+        'admin_key' => env('QUESTION_BANK_ADMIN_KEY', 'athena_iqpe_super_secret_admin_key_2026'),
+        'timeout'   => (int) env('QUESTION_BANK_TIMEOUT', 10),
+    ],
+
 ];

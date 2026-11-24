@@ -19,6 +19,7 @@ class StartExamRequest extends FormRequest
             'subject_ids' => 'nullable|array',
             'subject_ids.*' => 'exists:subjects,id',
             'topic_id' => 'nullable|integer|exists:topics,id',
+            'questions_count' => 'nullable|integer|min:5|max:100',
         ];
     }
 }

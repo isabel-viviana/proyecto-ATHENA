@@ -43,4 +43,5 @@ Route::prefix('progress')->group(base_path('routes/progress.php'));
 Route::prefix('profile')->group(base_path('routes/profile.php'));
 Route::prefix('ai')->group(base_path('routes/ai.php'));
 Route::prefix('notifications')->group(base_path('routes/notifications.php'));
+Route::prefix('ranking')->group(base_path('routes/ranking.php'));
 Route::prefix('subscriptions')->group(base_path('routes/subscriptions.php'));

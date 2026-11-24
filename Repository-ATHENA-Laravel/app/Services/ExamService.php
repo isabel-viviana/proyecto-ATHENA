@@ -28,9 +28,10 @@ class ExamService
         $subjectIds = $data['subject_ids'] ?? [];
         $topicId = isset($data['topic_id']) ? (int) $data['topic_id'] : null;
 
-        // Modo PRÁCTICA (Sprint E4.6: 25 preguntas por materia, selección atómica y persistencia inmutable)
+        // Modo PRÁCTICA (Sprint E4.6: preguntas por materia, selección atómica y persistencia inmutable)
         if ($examType === 'practice') {
-            return $this->configurePracticeExam($userId, $subjectIds, $topicId, $difficulty);
+            $requestedCount = isset($data['questions_count']) ? (int) $data['questions_count'] : null;
+            return $this->configurePracticeExam($userId, $subjectIds, $topicId, $difficulty, $requestedCount);
         }
 
         // Modos QUICK y FULL (Simulacros existentes preservados)
@@ -64,11 +65,12 @@ class ExamService
     }
 
     /**
-     * Configura una práctica de 25 preguntas con selección atómica de grupos y persistencia inmutable.
+     * Configura una práctica de preguntas con selección atómica de grupos y persistencia inmutable.
+     * Soporta cantidad configurable respetando la disponibilidad real en el banco.
      *
      * @throws InsufficientQuestionsException|InvalidArgumentException
      */
-    protected function configurePracticeExam(int $userId, array $subjectIds, ?int $topicId, string $difficulty): array
+    protected function configurePracticeExam(int $userId, array $subjectIds, ?int $topicId, string $difficulty, ?int $requestedCount = null): array
     {
         if (empty($subjectIds)) {
             throw new InvalidArgumentException("Debes seleccionar una materia para iniciar una sesión de práctica.");
@@ -84,7 +86,28 @@ class ExamService
             }
         }
 
-        $targetCount = 25;
+        // Consultar cuántas preguntas publicadas y válidas existen realmente
+        $availableCount = Question::where('subject_id', $subjectId)
+            ->published()
+            ->when($topicId, fn($q) => $q->where('topic_id', $topicId))
+            ->whereHas('options', fn($q) => $q->where('is_correct', true))
+            ->count();
+
+        if ($availableCount < 5) {
+            throw new InsufficientQuestionsException(
+                "La materia dispone únicamente de {$availableCount} preguntas publicadas válidas. Se requiere un mínimo de 5 preguntas para formar una práctica.",
+                $availableCount,
+                5
+            );
+        }
+
+        // Si el usuario solicitó una cantidad específica, validarla
+        if ($requestedCount !== null && $requestedCount > 0) {
+            $targetCount = min($requestedCount, $availableCount);
+        } else {
+            // Por defecto 25, o si hay menos disponibles (ej. 15), ajustarse al total disponible
+            $targetCount = min(25, $availableCount);
+        }
 
         // 1. Ejecutar algoritmo de selección atómica de reactivos
         $selection = $this->selectPracticeQuestions($subjectId, $topicId, $difficulty, $targetCount);

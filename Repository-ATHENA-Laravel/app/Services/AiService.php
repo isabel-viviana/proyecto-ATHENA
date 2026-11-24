@@ -128,8 +128,13 @@ PROMPT;
             . "\"{$userMessage}\"\n\n"
             . "RESPUESTA DE ATHENA:";
 
-        // 4. Invocar a GeminiService
-        $aiResponse = $this->geminiService->generateText($fullPrompt);
+        // 4. Invocar a GeminiService (con fallback resiliente ante saturación o desconexión externa)
+        try {
+            $aiResponse = $this->geminiService->generateText($fullPrompt);
+        } catch (Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Gemini API temporalmente no disponible en ATHENA IA: ' . $e->getMessage());
+            $aiResponse = "¡Hola! Soy tu tutor pedagógico ATHENA (el Zorro ATHENA 🦊). Actualmente la red externa de IA presenta alta demanda, pero puedo guiarte: en las pruebas Saber 11, la clave para responder acertadamente consiste en descomponer el problema, identificar las premisas dadas y descartar opciones distractores por reducción. ¡Intenta plantear los datos paso a paso!";
+        }
 
         // 5. Guardar mensajes en MongoDB y sincronizar registro de propietario en Cache
         $userMsgStruct = [
