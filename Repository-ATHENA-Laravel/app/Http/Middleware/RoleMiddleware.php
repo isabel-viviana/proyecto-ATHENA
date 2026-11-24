@@ -10,7 +10,8 @@ class RoleMiddleware
 {
     /**
      * Verifica que el usuario autenticado tenga uno de los roles permitidos.
-     * Uso en rutas: ->middleware('role:admin,superadmin')
+     * Reconoce 'superadmin' y 'super_admin' como variantes equivalentes del superadministrador.
+     * Uso en rutas: ->middleware('role:admin,superadmin,super_admin')
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
@@ -22,28 +23,25 @@ class RoleMiddleware
             ], 401);
         }
 
-        // Expandir roles si vienen separados por comas y normalizar
         $allowedRoles = [];
         foreach ($roles as $roleGroup) {
             foreach (explode(',', $roleGroup) as $r) {
-                $trimmed = strtolower(trim($r));
-                if ($trimmed !== '') {
-                    $allowedRoles[] = $trimmed;
+                $normalized = strtolower(trim($r));
+                if ($normalized === '') {
+                    continue;
+                }
+                $allowedRoles[] = $normalized;
+
+                if ($normalized === 'superadmin' || $normalized === 'super_admin') {
+                    $allowedRoles[] = 'superadmin';
+                    $allowedRoles[] = 'super_admin';
                 }
             }
         }
 
         $userRole = strtolower(trim((string) ($user->role ?? 'student')));
 
-        // Equivalencia entre superadmin y super_admin
-        if (in_array('superadmin', $allowedRoles, true) && !in_array('super_admin', $allowedRoles, true)) {
-            $allowedRoles[] = 'super_admin';
-        }
-        if (in_array('super_admin', $allowedRoles, true) && !in_array('superadmin', $allowedRoles, true)) {
-            $allowedRoles[] = 'superadmin';
-        }
-
-        if (!in_array($userRole, $allowedRoles, true)) {
+        if (!in_array($userRole, array_unique($allowedRoles), true)) {
             return response()->json([
                 'code' => 'FORBIDDEN_ROLE',
                 'message' => 'No tienes permisos para acceder a este recurso.',

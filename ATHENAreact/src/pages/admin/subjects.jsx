@@ -1,210 +1,236 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./subjects.css";
-
-const initialSubjectsData = [
-    {
-        id: 1,
-        name: "Matemáticas",
-        description: "Razonamiento cuantitativo, álgebra, cálculo y estadística.",
-        icon: "fa-solid fa-calculator",
-        color: "#10b981",
-        topics: [
-            { id: 101, name: "Álgebra y Funciones", desc: "Ecuaciones lineales, cuadráticas y modelos funcionales.", questionsCount: 95 },
-            { id: 102, name: "Geometría y Medición", desc: "Teorema de Pitágoras, áreas, volúmenes y trigonometría básica.", questionsCount: 82 },
-            { id: 103, name: "Trigonometría", desc: "Razones trigonométricas, ley de senos y cosenos.", questionsCount: 64 },
-            { id: 104, name: "Estadística y Probabilidad", desc: "Medidas de tendencia central, dispersión y combinatoria.", questionsCount: 78 },
-            { id: 105, name: "Cálculo Diferencial Básico", desc: "Límites, derivadas intuitivas y razón de cambio.", questionsCount: 45 },
-        ],
-    },
-    {
-        id: 2,
-        name: "Lectura Crítica",
-        description: "Comprensión semántica, análisis argumentativo y valoración crítica.",
-        icon: "fa-solid fa-book-open",
-        color: "#3b82f6",
-        topics: [
-            { id: 201, name: "Tipología Textual", desc: "Textos continuos (narrativos, expositivos) y discontinuos.", questionsCount: 88 },
-            { id: 202, name: "Identificación de Tesis", desc: "Reconocimiento de la idea central y argumentos de apoyo.", questionsCount: 74 },
-            { id: 203, name: "Falacias Argumentativas", desc: "Detección de inconsistencias, sesgos y premisas falsas.", questionsCount: 65 },
-            { id: 204, name: "Intencionalidad del Autor", desc: "Tono, propósito comunicativo y contexto sociocultural.", questionsCount: 68 },
-        ],
-    },
-    {
-        id: 3,
-        name: "Ciencias Naturales",
-        description: "Indagación científica, uso comprensivo del conocimiento y explicación de fenómenos.",
-        icon: "fa-solid fa-flask",
-        color: "#a855f7",
-        topics: [
-            { id: 301, name: "Biología Celular y Genética", desc: "Estructura celular, mitosis, meiosis y herencia mendeliana.", questionsCount: 92 },
-            { id: 302, name: "Termodinámica y Química", desc: "Enlaces químicos, estequiometría y leyes de gases.", questionsCount: 84 },
-            { id: 303, name: "Cinemática y Dinámica (Física)", desc: "Leyes de Newton, energía, trabajo y conservación.", questionsCount: 76 },
-            { id: 304, name: "Ecología y Medio Ambiente", desc: "Cadenas tróficas, ciclos biogeoquímicos y sostenibilidad.", questionsCount: 58 },
-        ],
-    },
-    {
-        id: 4,
-        name: "Sociales y Ciudadanas",
-        description: "Pensamiento social, interpretación de perspectivas y pensamiento reflexivo.",
-        icon: "fa-solid fa-landmark",
-        color: "#f59e0b",
-        topics: [
-            { id: 401, name: "Constitución Política de 1991", desc: "Derechos fundamentales, ramas del poder y tutela.", questionsCount: 75 },
-            { id: 402, name: "Historia de Colombia y Conflicto", desc: "Siglo XX, violencia partidista y procesos de paz.", questionsCount: 68 },
-            { id: 403, name: "Geografía y Economía", desc: "Globalización, modelos económicos y territorio nacional.", questionsCount: 62 },
-            { id: 404, name: "Competencias Ciudadanas", desc: "Mecanismos de participación, pluralismo y convivencia.", questionsCount: 55 },
-        ],
-    },
-    {
-        id: 5,
-        name: "Inglés",
-        description: "Competencia comunicativa y lectora en lengua extranjera (Nivel A1 a B1+).",
-        icon: "fa-solid fa-earth-americas",
-        color: "#06b6d4",
-        topics: [
-            { id: 501, name: "Vocabulario y Avisos Cotidianos", desc: "Reconocimiento de avisos y emparejamiento de definiciones.", questionsCount: 60 },
-            { id: 502, name: "Conversaciones Completas", desc: "Diálogos cortos, respuestas coherentes y situaciones diarias.", questionsCount: 54 },
-            { id: 503, name: "Lectura Literal e Inferencial B1", desc: "Artículos cortos, biografías y comprensión de artículos.", questionsCount: 52 },
-            { id: 504, name: "Gramática en Contexto (Cloze Test)", desc: "Tiempos verbales, conectores y vocabulario estructural.", questionsCount: 49 },
-        ],
-    },
-];
+import {
+    getSubjectsCatalog,
+    createSubjectCatalog,
+    updateSubjectCatalog,
+    deleteSubjectCatalog,
+    createTopicCatalog,
+    updateTopicCatalog,
+    deleteTopicCatalog,
+} from "../../api/documents";
 
 const Subjects = () => {
-    const [subjects, setSubjects] = useState(initialSubjectsData);
-    const [selectedSubjectId, setSelectedSubjectId] = useState(1);
+    const [subjects, setSubjects] = useState([]);
+    const [selectedSubjectId, setSelectedSubjectId] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [feedback, setFeedback] = useState(null);
 
-    // Modales y Edición
     const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
     const [editingSubject, setEditingSubject] = useState(null);
-    const [subjectForm, setSubjectForm] = useState({ name: "", description: "", icon: "fa-solid fa-book", color: "#10b981" });
+    const [subjectForm, setSubjectForm] = useState({
+        name: "",
+        description: "",
+        icon: "fa-solid fa-book-bookmark",
+        color: "#10b981",
+    });
 
     const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
     const [editingTopic, setEditingTopic] = useState(null);
-    const [topicForm, setTopicForm] = useState({ name: "", desc: "", questionsCount: 50 });
+    const [topicForm, setTopicForm] = useState({
+        name: "",
+        description: "",
+        is_verified: true,
+    });
 
-    // Materia Seleccionada actual
-    const selectedSubject = subjects.find((s) => s.id === selectedSubjectId) || subjects[0];
+    const showBanner = (type, text) => {
+        setFeedback({ type, text });
+        setTimeout(() => {
+            setFeedback((prev) => (prev?.text === text ? null : prev));
+        }, 5000);
+    };
 
-    // =========================================================
-    // HANDLERS MATERIAS
-    // =========================================================
+    const loadCatalog = async (preferredId = null) => {
+        setLoading(true);
+        try {
+            const res = await getSubjectsCatalog();
+            if (res?.success && Array.isArray(res.data)) {
+                setSubjects(res.data);
+                if (res.data.length > 0) {
+                    const targetId = preferredId || selectedSubjectId || res.data[0].id;
+                    const exists = res.data.some((s) => Number(s.id) === Number(targetId));
+                    setSelectedSubjectId(exists ? Number(targetId) : Number(res.data[0].id));
+                }
+            }
+        } catch (err) {
+            showBanner(
+                "error",
+                err?.response?.data?.message || "No se pudo consultar el catálogo de áreas y temas en Supabase."
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadCatalog();
+    }, []);
+
+    const selectedSubject =
+        subjects.find((s) => Number(s.id) === Number(selectedSubjectId)) || subjects[0] || null;
+
     const handleOpenCreateSubject = () => {
         setEditingSubject(null);
-        setSubjectForm({ name: "", description: "", icon: "fa-solid fa-book-bookmark", color: "#10b981" });
+        setSubjectForm({
+            name: "",
+            description: "",
+            icon: "fa-solid fa-book-bookmark",
+            color: "#10b981",
+        });
         setIsSubjectModalOpen(true);
     };
 
     const handleOpenEditSubject = (e, subject) => {
         e.stopPropagation();
         setEditingSubject(subject);
-        setSubjectForm({ name: subject.name, description: subject.description, icon: subject.icon, color: subject.color });
+        setSubjectForm({
+            name: subject.name || "",
+            description: subject.description || "",
+            icon: subject.icon || "fa-solid fa-book-bookmark",
+            color: subject.color || "#10b981",
+        });
         setIsSubjectModalOpen(true);
     };
 
-    const handleDeleteSubject = (e, subjectId) => {
+    const handleDeleteSubject = async (e, subject) => {
         e.stopPropagation();
-        if (subjects.length <= 1) {
-            alert("Debe haber al menos una materia registrada.");
+        if (
+            !window.confirm(
+                `¿Deseas eliminar el área "${subject.name}" del catálogo en Supabase? Solo se eliminará si no tiene preguntas ni estímulos vinculados.`
+            )
+        ) {
             return;
         }
-        const updated = subjects.filter((s) => s.id !== subjectId);
-        setSubjects(updated);
-        if (selectedSubjectId === subjectId) {
-            setSelectedSubjectId(updated[0].id);
-        }
-    };
 
-    const handleSaveSubject = (e) => {
-        e.preventDefault();
-        if (editingSubject) {
-            // Editar existente
-            setSubjects((prev) =>
-                prev.map((s) =>
-                    s.id === editingSubject.id
-                        ? { ...s, name: subjectForm.name, description: subjectForm.description, icon: subjectForm.icon, color: subjectForm.color }
-                        : s
-                )
+        try {
+            const res = await deleteSubjectCatalog(subject.id);
+            showBanner("success", res?.message || "Área eliminada correctamente.");
+            await loadCatalog();
+            window.dispatchEvent(new Event("athena-admin-stats-refresh"));
+        } catch (err) {
+            showBanner(
+                "error",
+                err?.response?.data?.message || "No se pudo eliminar el área académica."
             );
-        } else {
-            // Crear nueva
-            const newId = Date.now();
-            const newSubject = {
-                id: newId,
-                name: subjectForm.name,
-                description: subjectForm.description,
-                icon: subjectForm.icon,
-                color: subjectForm.color,
-                topics: [],
-            };
-            setSubjects([...subjects, newSubject]);
-            setSelectedSubjectId(newId);
         }
-        setIsSubjectModalOpen(false);
     };
 
-    // =========================================================
-    // HANDLERS TEMAS
-    // =========================================================
+    const handleSaveSubject = async (e) => {
+        e.preventDefault();
+        if (!subjectForm.name.trim()) return;
+
+        setSaving(true);
+        try {
+            if (editingSubject) {
+                const res = await updateSubjectCatalog(editingSubject.id, {
+                    name: subjectForm.name.trim(),
+                    description: subjectForm.description.trim(),
+                });
+                showBanner("success", res?.message || "Área académica actualizada en Supabase.");
+                setIsSubjectModalOpen(false);
+                await loadCatalog(editingSubject.id);
+            } else {
+                const res = await createSubjectCatalog({
+                    name: subjectForm.name.trim(),
+                    description: subjectForm.description.trim(),
+                });
+                showBanner("success", res?.message || "Área académica creada en Supabase.");
+                setIsSubjectModalOpen(false);
+                await loadCatalog(res?.data?.id);
+            }
+            window.dispatchEvent(new Event("athena-admin-stats-refresh"));
+        } catch (err) {
+            showBanner(
+                "error",
+                err?.response?.data?.message || "Error al guardar el área académica."
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleOpenCreateTopic = () => {
+        if (!selectedSubject) return;
         setEditingTopic(null);
-        setTopicForm({ name: "", desc: "", questionsCount: 40 });
+        setTopicForm({
+            name: "",
+            description: "",
+            is_verified: true,
+        });
         setIsTopicModalOpen(true);
     };
 
     const handleOpenEditTopic = (topic) => {
         setEditingTopic(topic);
-        setTopicForm({ name: topic.name, desc: topic.desc, questionsCount: topic.questionsCount });
+        setTopicForm({
+            name: topic.name || "",
+            description: topic.description || topic.desc || "",
+            is_verified: topic.is_verified !== undefined ? Boolean(topic.is_verified) : true,
+        });
         setIsTopicModalOpen(true);
     };
 
-    const handleDeleteTopic = (topicId) => {
-        setSubjects((prev) =>
-            prev.map((s) =>
-                s.id === selectedSubjectId
-                    ? { ...s, topics: s.topics.filter((t) => t.id !== topicId) }
-                    : s
+    const handleDeleteTopic = async (topic) => {
+        if (
+            !window.confirm(
+                `¿Deseas eliminar o desactivar el tema "${topic.name}"? Si tiene preguntas vinculadas, se marcará como inactivo sin perder trazabilidad.`
             )
-        );
+        ) {
+            return;
+        }
+
+        try {
+            const res = await deleteTopicCatalog(topic.id);
+            showBanner("success", res?.message || "Tema procesado exitosamente.");
+            await loadCatalog(selectedSubject?.id);
+            window.dispatchEvent(new Event("athena-admin-stats-refresh"));
+        } catch (err) {
+            showBanner(
+                "error",
+                err?.response?.data?.message || "No se pudo eliminar o desactivar el tema."
+            );
+        }
     };
 
-    const handleSaveTopic = (e) => {
+    const handleSaveTopic = async (e) => {
         e.preventDefault();
-        setSubjects((prev) =>
-            prev.map((s) => {
-                if (s.id !== selectedSubjectId) return s;
+        if (!selectedSubject || !topicForm.name.trim()) return;
 
-                if (editingTopic) {
-                    // Editar tema
-                    return {
-                        ...s,
-                        topics: s.topics.map((t) =>
-                            t.id === editingTopic.id
-                                ? { ...t, name: topicForm.name, desc: topicForm.desc, questionsCount: Number(topicForm.questionsCount) }
-                                : t
-                        ),
-                    };
-                } else {
-                    // Crear nuevo tema
-                    const newTopic = {
-                        id: Date.now(),
-                        name: topicForm.name,
-                        desc: topicForm.desc,
-                        questionsCount: Number(topicForm.questionsCount),
-                    };
-                    return {
-                        ...s,
-                        topics: [...s.topics, newTopic],
-                    };
-                }
-            })
-        );
-        setIsTopicModalOpen(false);
+        setSaving(true);
+        try {
+            if (editingTopic) {
+                const res = await updateTopicCatalog(editingTopic.id, {
+                    subject_id: selectedSubject.id,
+                    name: topicForm.name.trim(),
+                    description: topicForm.description.trim(),
+                    is_verified: Boolean(topicForm.is_verified),
+                });
+                showBanner("success", res?.message || "Tema curricular actualizado en Supabase.");
+            } else {
+                const res = await createTopicCatalog({
+                    subject_id: selectedSubject.id,
+                    name: topicForm.name.trim(),
+                    description: topicForm.description.trim(),
+                    is_verified: Boolean(topicForm.is_verified),
+                });
+                showBanner("success", res?.message || "Tema curricular creado en Supabase.");
+            }
+            setIsTopicModalOpen(false);
+            await loadCatalog(selectedSubject.id);
+            window.dispatchEvent(new Event("athena-admin-stats-refresh"));
+        } catch (err) {
+            showBanner(
+                "error",
+                err?.response?.data?.message || "Error al guardar el tema curricular."
+            );
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
         <div className="sbj-container">
-            {/* 1. HEADER */}
             <header className="sbj-header">
                 <div className="sbj-header-left">
                     <h1 className="sbj-title">
@@ -212,7 +238,7 @@ const Subjects = () => {
                         Gestión de Materias y Temas
                     </h1>
                     <p className="sbj-subtitle">
-                        Estructura académica oficial y taxonomía para las pruebas ICFES Saber 11.
+                        Catálogo oficial en Supabase PostgreSQL — Áreas y temas curriculares para pruebas ICFES Saber 11.
                     </p>
                 </div>
                 <button
@@ -225,176 +251,270 @@ const Subjects = () => {
                 </button>
             </header>
 
-            {/* 2. MAIN SPLIT LAYOUT */}
-            <div className="sbj-layout-grid">
-                {/* PANEL IZQUIERDO: LISTADO DE MATERIAS */}
-                <div className="sbj-left-panel">
-                    <div className="sbj-panel-heading">
-                        <h2 className="sbj-panel-heading-title">
-                            <i className="fa-solid fa-layer-group"></i>
-                            Materias ICFES
-                        </h2>
-                        <span className="sbj-panel-badge">{subjects.length} Registradas</span>
+            {feedback && (
+                <div
+                    style={{
+                        padding: "12px 16px",
+                        borderRadius: "10px",
+                        marginBottom: "18px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background:
+                            feedback.type === "error"
+                                ? "rgba(239, 68, 68, 0.14)"
+                                : "rgba(16, 185, 129, 0.14)",
+                        border:
+                            feedback.type === "error"
+                                ? "1px solid rgba(239, 68, 68, 0.35)"
+                                : "1px solid rgba(16, 185, 129, 0.35)",
+                        color: feedback.type === "error" ? "#fca5a5" : "#6ee7b7",
+                        fontSize: "0.9rem",
+                    }}
+                >
+                    <span>
+                        <i
+                            className={
+                                feedback.type === "error"
+                                    ? "fa-solid fa-circle-exclamation"
+                                    : "fa-solid fa-circle-check"
+                            }
+                            style={{ marginRight: "8px" }}
+                        ></i>
+                        {feedback.text}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setFeedback(null)}
+                        style={{ background: "none", border: "none", color: "inherit", cursor: "pointer" }}
+                    >
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            )}
+
+            {loading ? (
+                <div
+                    style={{
+                        padding: "48px",
+                        textAlign: "center",
+                        color: "#94a3b8",
+                        background: "rgba(15, 23, 42, 0.6)",
+                        borderRadius: "16px",
+                    }}
+                >
+                    <i className="fa-solid fa-circle-notch fa-spin" style={{ marginRight: "8px" }}></i>
+                    Cargando áreas y temas reales desde Supabase PostgreSQL...
+                </div>
+            ) : (
+                <div className="sbj-layout-grid">
+                    <div className="sbj-left-panel">
+                        <div className="sbj-panel-heading">
+                            <h2 className="sbj-panel-heading-title">
+                                <i className="fa-solid fa-layer-group"></i>
+                                Materias ICFES
+                            </h2>
+                            <span className="sbj-panel-badge">{subjects.length} Registradas</span>
+                        </div>
+
+                        <div className="sbj-cards-list">
+                            {subjects.map((subject) => {
+                                const isSelected = Number(subject.id) === Number(selectedSubject?.id);
+                                const totalQuestions = Number(subject.questions_count ?? 0);
+                                const publishedQuestions = Number(subject.published_questions_count ?? 0);
+                                const topicsList = Array.isArray(subject.topics) ? subject.topics : [];
+
+                                return (
+                                    <div
+                                        key={subject.id}
+                                        className={`sbj-card-item ${isSelected ? "sbj-card-item--active" : ""}`}
+                                        onClick={() => setSelectedSubjectId(subject.id)}
+                                    >
+                                        <div className="sbj-card-info">
+                                            <div
+                                                className="sbj-card-icon"
+                                                style={{
+                                                    backgroundColor: `${subject.color || "#10b981"}18`,
+                                                    color: subject.color || "#10b981",
+                                                }}
+                                            >
+                                                <i className={subject.icon || "fa-solid fa-book"}></i>
+                                            </div>
+                                            <div className="sbj-card-texts">
+                                                <span className="sbj-card-name">
+                                                    {subject.name}{" "}
+                                                    <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                                                        (#{subject.id})
+                                                    </span>
+                                                </span>
+                                                <span className="sbj-card-meta">
+                                                    {totalQuestions} preguntas ({publishedQuestions} publicadas)
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="sbj-card-actions">
+                                            <span className="sbj-card-topics-count">
+                                                {topicsList.length} temas
+                                            </span>
+                                            <button
+                                                className="sbj-mini-action-btn"
+                                                title="Editar materia"
+                                                type="button"
+                                                onClick={(e) => handleOpenEditSubject(e, subject)}
+                                            >
+                                                <i className="fa-solid fa-pen-to-square"></i>
+                                            </button>
+                                            <button
+                                                className="sbj-mini-action-btn sbj-mini-action-btn--delete"
+                                                title="Eliminar materia"
+                                                type="button"
+                                                onClick={(e) => handleDeleteSubject(e, subject)}
+                                            >
+                                                <i className="fa-solid fa-trash-can"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
 
-                    <div className="sbj-cards-list">
-                        {subjects.map((subject) => {
-                            const isSelected = subject.id === selectedSubjectId;
-                            const totalQuestions = subject.topics.reduce(
-                                (acc, t) => acc + (t.questionsCount || 0),
-                                0
-                            );
-
-                            return (
-                                <div
-                                    key={subject.id}
-                                    className={`sbj-card-item ${isSelected ? "sbj-card-item--active" : ""}`}
-                                    onClick={() => setSelectedSubjectId(subject.id)}
-                                >
-                                    <div className="sbj-card-info">
+                    <div className="sbj-right-panel">
+                        {selectedSubject && (
+                            <>
+                                <div className="sbj-selected-header">
+                                    <div className="sbj-selected-title-group">
                                         <div
-                                            className="sbj-card-icon"
-                                            style={{ backgroundColor: `${subject.color}18`, color: subject.color }}
+                                            className="sbj-selected-icon-big"
+                                            style={{
+                                                backgroundColor: `${selectedSubject.color || "#10b981"}20`,
+                                                color: selectedSubject.color || "#10b981",
+                                                border: `1px solid ${selectedSubject.color || "#10b981"}40`,
+                                            }}
                                         >
-                                            <i className={subject.icon}></i>
+                                            <i className={selectedSubject.icon || "fa-solid fa-book"}></i>
                                         </div>
-                                        <div className="sbj-card-texts">
-                                            <span className="sbj-card-name">{subject.name}</span>
-                                            <span className="sbj-card-meta">
-                                                {totalQuestions} preguntas registradas
+                                        <div className="sbj-selected-titles">
+                                            <h2 className="sbj-selected-name">{selectedSubject.name}</h2>
+                                            <span className="sbj-selected-sub">
+                                                {selectedSubject.description}
                                             </span>
                                         </div>
                                     </div>
 
-                                    <div className="sbj-card-actions">
-                                        <span className="sbj-card-topics-count">
-                                            {subject.topics.length} temas
-                                        </span>
-                                        <button
-                                            className="sbj-mini-action-btn"
-                                            title="Editar materia"
-                                            type="button"
-                                            onClick={(e) => handleOpenEditSubject(e, subject)}
-                                        >
-                                            <i className="fa-solid fa-pen-to-square"></i>
-                                        </button>
-                                        <button
-                                            className="sbj-mini-action-btn sbj-mini-action-btn--delete"
-                                            title="Eliminar materia"
-                                            type="button"
-                                            onClick={(e) => handleDeleteSubject(e, subject.id)}
-                                        >
-                                            <i className="fa-solid fa-trash-can"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* PANEL DERECHO: TEMAS DE LA MATERIA SELECCIONADA */}
-                <div className="sbj-right-panel">
-                    {selectedSubject && (
-                        <>
-                            <div className="sbj-selected-header">
-                                <div className="sbj-selected-title-group">
-                                    <div
-                                        className="sbj-selected-icon-big"
-                                        style={{
-                                            backgroundColor: `${selectedSubject.color}20`,
-                                            color: selectedSubject.color,
-                                            border: `1px solid ${selectedSubject.color}40`,
-                                        }}
-                                    >
-                                        <i className={selectedSubject.icon}></i>
-                                    </div>
-                                    <div className="sbj-selected-titles">
-                                        <h2 className="sbj-selected-name">{selectedSubject.name}</h2>
-                                        <span className="sbj-selected-sub">
-                                            {selectedSubject.description}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <button
-                                    className="sbj-btn-new-tema"
-                                    onClick={handleOpenCreateTopic}
-                                    type="button"
-                                >
-                                    <i className="fa-solid fa-plus"></i>
-                                    <span>+ Agregar Tema</span>
-                                </button>
-                            </div>
-
-                            {/* Cuadrícula de Temas */}
-                            {selectedSubject.topics.length > 0 ? (
-                                <div className="sbj-topics-grid">
-                                    {selectedSubject.topics.map((topic) => (
-                                        <div key={topic.id} className="sbj-topic-card">
-                                            <div className="sbj-topic-top">
-                                                <div>
-                                                    <div className="sbj-topic-name">{topic.name}</div>
-                                                    <div className="sbj-topic-desc">{topic.desc}</div>
-                                                </div>
-                                            </div>
-
-                                            <div className="sbj-topic-footer">
-                                                <span className="sbj-topic-count-pill">
-                                                    <i className="fa-solid fa-layer-group"></i>
-                                                    {topic.questionsCount} preguntas
-                                                </span>
-
-                                                <div className="sbj-topic-actions">
-                                                    <button
-                                                        className="sbj-topic-action-btn"
-                                                        title="Editar tema"
-                                                        type="button"
-                                                        onClick={() => handleOpenEditTopic(topic)}
-                                                    >
-                                                        <i className="fa-solid fa-pen-to-square"></i>
-                                                    </button>
-                                                    <button
-                                                        className="sbj-topic-action-btn sbj-topic-action-btn--delete"
-                                                        title="Eliminar tema"
-                                                        type="button"
-                                                        onClick={() => handleDeleteTopic(topic.id)}
-                                                    >
-                                                        <i className="fa-solid fa-trash-can"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="sbj-empty-topics">
-                                    <i className="fa-solid fa-folder-open"></i>
-                                    <p>Esta materia aún no tiene temas asignados.</p>
                                     <button
                                         className="sbj-btn-new-tema"
                                         onClick={handleOpenCreateTopic}
-                                        style={{ marginTop: "10px" }}
+                                        type="button"
                                     >
-                                        Crear el primer tema
+                                        <i className="fa-solid fa-plus"></i>
+                                        <span>+ Agregar Tema</span>
                                     </button>
                                 </div>
-                            )}
-                        </>
-                    )}
-                </div>
-            </div>
 
-            {/* =========================================================
-               MODAL: CREAR / EDITAR MATERIA
-               ========================================================= */}
+                                {Array.isArray(selectedSubject.topics) && selectedSubject.topics.length > 0 ? (
+                                    <div className="sbj-topics-grid">
+                                        {selectedSubject.topics.map((topic) => {
+                                            const isTopicActive = topic.is_active !== false;
+                                            return (
+                                                <div
+                                                    key={topic.id}
+                                                    className="sbj-topic-card"
+                                                    style={{
+                                                        opacity: isTopicActive ? 1 : 0.65,
+                                                    }}
+                                                >
+                                                    <div className="sbj-topic-top">
+                                                        <div style={{ width: "100%" }}>
+                                                            <div
+                                                                style={{
+                                                                    display: "flex",
+                                                                    justifyContent: "space-between",
+                                                                    alignItems: "center",
+                                                                    gap: "8px",
+                                                                }}
+                                                            >
+                                                                <div className="sbj-topic-name">{topic.name}</div>
+                                                                <span
+                                                                    style={{
+                                                                        fontSize: "0.7rem",
+                                                                        padding: "2px 8px",
+                                                                        borderRadius: "999px",
+                                                                        fontWeight: 600,
+                                                                        background: isTopicActive
+                                                                            ? "rgba(16, 185, 129, 0.15)"
+                                                                            : "rgba(239, 68, 68, 0.15)",
+                                                                        color: isTopicActive ? "#34d399" : "#f87171",
+                                                                    }}
+                                                                >
+                                                                    {isTopicActive ? "Activo" : "Inactivo"}
+                                                                </span>
+                                                            </div>
+                                                            <div className="sbj-topic-desc">
+                                                                {topic.description || topic.desc || "Sin descripción"}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="sbj-topic-footer">
+                                                        <span className="sbj-topic-count-pill">
+                                                            <i className="fa-solid fa-layer-group"></i>
+                                                            {topic.questions_count ?? topic.questionsCount ?? 0} preguntas asociadas
+                                                        </span>
+
+                                                        <div className="sbj-topic-actions">
+                                                            <button
+                                                                className="sbj-topic-action-btn"
+                                                                title="Editar tema"
+                                                                type="button"
+                                                                onClick={() => handleOpenEditTopic(topic)}
+                                                            >
+                                                                <i className="fa-solid fa-pen-to-square"></i>
+                                                            </button>
+                                                            <button
+                                                                className="sbj-topic-action-btn sbj-topic-action-btn--delete"
+                                                                title="Eliminar o desactivar tema"
+                                                                type="button"
+                                                                onClick={() => handleDeleteTopic(topic)}
+                                                            >
+                                                                <i className="fa-solid fa-trash-can"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="sbj-empty-topics">
+                                        <i className="fa-solid fa-folder-open"></i>
+                                        <p>
+                                            Esta materia aún no tiene temas registrados en Supabase. Puedes crear los temas curriculares ahora mismo.
+                                        </p>
+                                        <button
+                                            className="sbj-btn-new-tema"
+                                            onClick={handleOpenCreateTopic}
+                                            style={{ marginTop: "10px" }}
+                                            type="button"
+                                        >
+                                            Crear el primer tema
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {isSubjectModalOpen && (
                 <div className="sbj-modal-overlay" onClick={() => setIsSubjectModalOpen(false)}>
                     <div className="sbj-modal-card" onClick={(e) => e.stopPropagation()}>
                         <div className="sbj-modal-header">
                             <h3 className="sbj-modal-title">
                                 <i className="fa-solid fa-book-bookmark"></i>
-                                {editingSubject ? "Editar Materia" : "Nueva Materia ICFES"}
+                                {editingSubject ? "Editar Materia en Supabase" : "Nueva Materia ICFES"}
                             </h3>
                             <button
                                 className="sbj-modal-close-btn"
@@ -408,10 +528,10 @@ const Subjects = () => {
                         <form onSubmit={handleSaveSubject}>
                             <div className="sbj-modal-body">
                                 <div className="sbj-form-group">
-                                    <label className="sbj-form-label">Nombre de la Materia</label>
+                                    <label className="sbj-form-label">Nombre del Área Académica *</label>
                                     <input
                                         type="text"
-                                        placeholder="Ej: Matemáticas"
+                                        placeholder="Ej: Razonamiento Cuantitativo"
                                         className="sbj-form-input"
                                         value={subjectForm.name}
                                         onChange={(e) =>
@@ -425,53 +545,13 @@ const Subjects = () => {
                                 <div className="sbj-form-group">
                                     <label className="sbj-form-label">Descripción Académica</label>
                                     <textarea
-                                        placeholder="Resumen del alcance y competencias evaluadas..."
+                                        placeholder="Resumen del alcance y competencias evaluadas en esta área..."
                                         className="sbj-form-textarea"
                                         value={subjectForm.description}
                                         onChange={(e) =>
                                             setSubjectForm({ ...subjectForm, description: e.target.value })
                                         }
-                                        required
                                     ></textarea>
-                                </div>
-
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                                    <div className="sbj-form-group">
-                                        <label className="sbj-form-label">Icono (FontAwesome)</label>
-                                        <select
-                                            className="sbj-form-select"
-                                            value={subjectForm.icon}
-                                            onChange={(e) =>
-                                                setSubjectForm({ ...subjectForm, icon: e.target.value })
-                                            }
-                                        >
-                                            <option value="fa-solid fa-calculator">Calculadora</option>
-                                            <option value="fa-solid fa-book-open">Libro</option>
-                                            <option value="fa-solid fa-flask">Matraz / Ciencia</option>
-                                            <option value="fa-solid fa-landmark">Monumento / Sociales</option>
-                                            <option value="fa-solid fa-earth-americas">Planeta / Inglés</option>
-                                            <option value="fa-solid fa-atom">Átomo</option>
-                                            <option value="fa-solid fa-pen-nib">Pluma</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="sbj-form-group">
-                                        <label className="sbj-form-label">Color Temático</label>
-                                        <select
-                                            className="sbj-form-select"
-                                            value={subjectForm.color}
-                                            onChange={(e) =>
-                                                setSubjectForm({ ...subjectForm, color: e.target.value })
-                                            }
-                                        >
-                                            <option value="#10b981">Verde Esmeralda</option>
-                                            <option value="#3b82f6">Azul Royal</option>
-                                            <option value="#a855f7">Púrpura</option>
-                                            <option value="#f59e0b">Ámbar / Naranja</option>
-                                            <option value="#06b6d4">Cian</option>
-                                            <option value="#ec4899">Rosa / Magenta</option>
-                                        </select>
-                                    </div>
                                 </div>
                             </div>
 
@@ -483,8 +563,9 @@ const Subjects = () => {
                                 >
                                     Cancelar
                                 </button>
-                                <button type="submit" className="sbj-btn-save">
-                                    <i className="fa-solid fa-check"></i> Guardar Materia
+                                <button type="submit" className="sbj-btn-save" disabled={saving}>
+                                    <i className="fa-solid fa-check"></i>{" "}
+                                    {saving ? "Guardando..." : "Guardar Materia"}
                                 </button>
                             </div>
                         </form>
@@ -492,16 +573,13 @@ const Subjects = () => {
                 </div>
             )}
 
-            {/* =========================================================
-               MODAL: CREAR / EDITAR TEMA
-               ========================================================= */}
             {isTopicModalOpen && (
                 <div className="sbj-modal-overlay" onClick={() => setIsTopicModalOpen(false)}>
                     <div className="sbj-modal-card" onClick={(e) => e.stopPropagation()}>
                         <div className="sbj-modal-header">
                             <h3 className="sbj-modal-title">
                                 <i className="fa-solid fa-diagram-project"></i>
-                                {editingTopic ? "Editar Tema" : `Nuevo Tema en ${selectedSubject?.name}`}
+                                {editingTopic ? "Editar Tema Curricular" : `Nuevo Tema en ${selectedSubject?.name}`}
                             </h3>
                             <button
                                 className="sbj-modal-close-btn"
@@ -515,10 +593,10 @@ const Subjects = () => {
                         <form onSubmit={handleSaveTopic}>
                             <div className="sbj-modal-body">
                                 <div className="sbj-form-group">
-                                    <label className="sbj-form-label">Nombre del Tema</label>
+                                    <label className="sbj-form-label">Nombre del Tema *</label>
                                     <input
                                         type="text"
-                                        placeholder="Ej: Álgebra Lineal y Matrices"
+                                        placeholder="Ej: Álgebra y Funciones"
                                         className="sbj-form-input"
                                         value={topicForm.name}
                                         onChange={(e) =>
@@ -532,29 +610,30 @@ const Subjects = () => {
                                 <div className="sbj-form-group">
                                     <label className="sbj-form-label">Competencias / Descripción</label>
                                     <textarea
-                                        placeholder="Conceptos específicos evaluados por el ICFES..."
+                                        placeholder="Conceptos específicos evaluados por el ICFES en este tema..."
                                         className="sbj-form-textarea"
-                                        value={topicForm.desc}
+                                        value={topicForm.description}
                                         onChange={(e) =>
-                                            setTopicForm({ ...topicForm, desc: e.target.value })
+                                            setTopicForm({ ...topicForm, description: e.target.value })
                                         }
-                                        required
                                     ></textarea>
                                 </div>
 
                                 <div className="sbj-form-group">
-                                    <label className="sbj-form-label">Cantidad Inicial de Preguntas</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="40"
-                                        className="sbj-form-input"
-                                        value={topicForm.questionsCount}
+                                    <label className="sbj-form-label">Estado del Tema</label>
+                                    <select
+                                        className="sbj-form-select"
+                                        value={topicForm.is_verified ? "true" : "false"}
                                         onChange={(e) =>
-                                            setTopicForm({ ...topicForm, questionsCount: e.target.value })
+                                            setTopicForm({
+                                                ...topicForm,
+                                                is_verified: e.target.value === "true",
+                                            })
                                         }
-                                        required
-                                    />
+                                    >
+                                        <option value="true">Activo (Disponible en el catálogo)</option>
+                                        <option value="false">Inactivo</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -566,8 +645,9 @@ const Subjects = () => {
                                 >
                                     Cancelar
                                 </button>
-                                <button type="submit" className="sbj-btn-save">
-                                    <i className="fa-solid fa-check"></i> Guardar Tema
+                                <button type="submit" className="sbj-btn-save" disabled={saving}>
+                                    <i className="fa-solid fa-check"></i>{" "}
+                                    {saving ? "Guardando..." : "Guardar Tema"}
                                 </button>
                             </div>
                         </form>

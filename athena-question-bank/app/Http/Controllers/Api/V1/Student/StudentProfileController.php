@@ -45,7 +45,6 @@ class StudentProfileController extends Controller
                 ->first();
 
             if (! $user) {
-                // Si por alguna razón no está en MySQL, devolver datos del token
                 return response()->json([
                     'success' => true,
                     'data' => [
@@ -198,7 +197,7 @@ class StudentProfileController extends Controller
 
         $validated = $request->validate([
             'current_password'  => 'required|string',
-            'new_password'      => 'required|string|min:8',
+            'new_password'      => 'required|string|min:6',
             'firebase_verified' => 'nullable|boolean',
         ]);
 
@@ -247,4 +246,3 @@ class StudentProfileController extends Controller
         }
     }
 }
-

@@ -27,6 +27,7 @@ class AdminAuthController extends Controller
         $password = $validated['password'];
 
         $adminUser = null;
+        $userRecord = null;
 
         // 1. Intentar validar contra base de datos ATHENA Core (MySQL) si existe usuario administrativo
         try {
@@ -35,13 +36,24 @@ class AdminAuthController extends Controller
                 ->where('email', $email)
                 ->first();
 
-            if ($userRecord && in_array(strtolower($userRecord->role ?? ''), ['admin', 'superadmin', 'docente', 'coordinador'], true)) {
-                if (password_verify($password, $userRecord->password) || $password === 'admin123456') {
+            if ($userRecord && ($userRecord->remember_token ?? null) === 'SUSPENDED') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Esta cuenta administrativa se encuentra suspendida temporalmente.',
+                ], 403);
+            }
+
+            $rawRole = strtolower(trim((string) ($userRecord->role ?? '')));
+            $normalizedRole = $rawRole === 'super_admin' ? 'superadmin' : $rawRole;
+
+            if ($userRecord && in_array($normalizedRole, ['admin', 'superadmin', 'support', 'docente', 'coordinador'], true)) {
+                if (!empty($userRecord->password) && password_verify($password, $userRecord->password)) {
                     $adminUser = [
-                        'id'    => (string) $userRecord->id,
-                        'name'  => $userRecord->full_name ?? $userRecord->name ?? 'Administrador ATHENA',
-                        'email' => $userRecord->email,
-                        'role'  => strtolower($userRecord->role),
+                        'id'        => (string) $userRecord->id,
+                        'name'      => $userRecord->full_name ?? $userRecord->name ?? 'Administrador ATHENA',
+                        'full_name' => $userRecord->full_name ?? $userRecord->name ?? 'Administrador ATHENA',
+                        'email'     => $userRecord->email,
+                        'role'      => $normalizedRole,
                     ];
                 }
             }
@@ -53,7 +65,7 @@ class AdminAuthController extends Controller
         $configuredEmail = strtolower((string) config('services.athena.admin_email', 'admin@athena.edu.co'));
         $configuredPassword = (string) config('services.athena.admin_password', 'admin123456');
 
-        if (! $adminUser && $email === $configuredEmail && $password === $configuredPassword) {
+        if (! $adminUser && ! $userRecord && $email === $configuredEmail && $password === $configuredPassword) {
             $adminUser = [
                 'id'    => 'admin-root',
                 'name'  => 'Super Administrador ATHENA',

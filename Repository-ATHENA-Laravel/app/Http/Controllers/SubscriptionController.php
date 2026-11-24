@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PaymentTransaction;
 use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
-use App\Models\User;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -87,19 +87,7 @@ class SubscriptionController extends Controller
         $user = $request->user();
 
         if (!$user) {
-            return response()->json([
-                'success' => true,
-                'subscription' => [
-                    'plan_name' => 'Premium Mensual',
-                    'status' => 'active',
-                    'period' => 'Mensual',
-                    'price' => 29900,
-                    'formatted_price' => '$29.900 COP',
-                    'payment_method' => 'Nequi (Wompi Sandbox)',
-                    'end_date' => Carbon::now()->addDays(25)->toDateString(),
-                ],
-                'transactions' => [],
-            ]);
+            throw new AuthenticationException('No autenticado.');
         }
 
         $subscription = Subscription::with('subscriptionPlan')

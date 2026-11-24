@@ -39,7 +39,14 @@ class StudentRankingController extends Controller
     public function index(Request $request): JsonResponse
     {
         $authStudent = $this->getAuthenticatedStudent($request);
-        $currentStudentId = $authStudent ? (string) $authStudent['sub'] : null;
+        if (! $authStudent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesión no válida o expirada. Debes iniciar sesión.',
+            ], 401);
+        }
+
+        $currentStudentId = (string) $authStudent['sub'];
 
         try {
             // 1. Obtener estadísticas de respuestas en Supabase PostgreSQL agrupadas por student_id

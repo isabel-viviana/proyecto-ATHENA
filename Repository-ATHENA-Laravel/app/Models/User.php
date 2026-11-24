@@ -75,9 +75,14 @@ class User extends Authenticatable
 
     /**
      * Determina si la cuenta del usuario se encuentra bloqueada/suspendida.
+     * Compatible tanto con la columna 'status' ('blocked') como con 'remember_token' === 'SUSPENDED'.
      */
     public function isBlocked(): bool
     {
+        if (($this->remember_token ?? null) === 'SUSPENDED') {
+            return true;
+        }
+
         $status = strtolower(trim((string) ($this->status ?? self::STATUS_ACTIVE)));
 
         return in_array($status, ['blocked', 'suspended', 'suspendido', 'inactivo', 'inactive'], true);

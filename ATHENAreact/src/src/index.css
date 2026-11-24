@@ -1,0 +1,66 @@
+:root {
+    /* ATHENA DARK THEME VARIABLES */
+    --bg-dark: #050a18;
+    --bg-card: #0a1128;
+    --primary-blue: #1a3a8a;
+    --accent-yellow: #f6ad55;
+    --text-main: #ffffff;
+    --text-dim: #a0aec0;
+    --green-success: #48bb78;
+    --sidebar-width: 250px;
+
+    /* Variantes adicionales para componentes globales */
+    --bg-body: #050a18;
+    --border: #1a2238;
+    --primary: #6366f1;
+    --primary-light: rgba(99, 102, 241, 0.15);
+    --text-secondary: #a0aec0;
+    --radius-md: 12px;
+
+    --sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+    --heading: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+
+    color-scheme: dark;
+}
+
+body {
+    margin: 0;
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: var(--sans);
+    overflow-x: hidden;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+a {
+    text-decoration: none;
+}
+
+/* =========================
+   MAIN CONTENT & FLOATING BUTTON
+========================= */
+.main-content {
+    flex: 1;
+    padding: 30px 40px;
+    overflow-y: auto;
+    min-width: 0;
+}
+
+.ai-button {
+    position: fixed;
+    right: 30px;
+    bottom: 30px;
+    background: #2b6cb0;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    z-index: 100;
+}

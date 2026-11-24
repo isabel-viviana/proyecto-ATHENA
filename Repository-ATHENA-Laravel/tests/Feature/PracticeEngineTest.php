@@ -10,6 +10,7 @@ use App\Models\Topic;
 use App\Models\User;
 use App\Models\ExamAttempt;
 use App\Models\AttemptAnswer;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class PracticeEngineTest extends TestCase
@@ -21,14 +22,16 @@ class PracticeEngineTest extends TestCase
     }
 
     /**
-     * Helper para crear un usuario de prueba.
+     * Helper para crear y autenticar un usuario de prueba con Sanctum.
      */
     protected function createTestUser(): User
     {
-        return User::factory()->create([
+        $user = User::factory()->create([
             'full_name' => 'Estudiante Pruebas',
             'email' => 'estudiante@athena.edu.co',
         ]);
+        Sanctum::actingAs($user);
+        return $user;
     }
 
     /**

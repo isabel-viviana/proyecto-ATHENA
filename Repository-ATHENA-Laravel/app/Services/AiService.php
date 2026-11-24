@@ -2,13 +2,12 @@
 
 namespace App\Services;
 
-use App\Models\AiChatMessage;
-use App\Models\AiChatSession;
 use App\Models\Mongo\ChatHistory;
 use App\Models\Mongo\AiConversation;
 use App\Models\Mongo\AiInteraction;
 use App\Models\Mongo\AiLearningContext;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
@@ -50,34 +49,54 @@ PROMPT;
     }
 
     /**
-     * Procesa un mensaje enviado por el estudiante a ATHENA registrando cualquier fallo de MongoDB en el Log.
+     * Procesa un mensaje enviado por el estudiante a ATHENA.
+     * Persiste en MongoDB (ChatHistory y AiConversation) y mantiene respaldo aislado por usuario en Cache.
      */
     public function sendMessage(int $userId, string $userMessage, ?string $conversationId = null): array
     {
         $userId = (int) $userId;
         $titleSnippet = Str::limit(trim($userMessage), 35, '...');
 
-        $academicContextData = $this->aiContextService->buildAcademicContext($userId);
-        $formattedContext = $this->aiContextService->formatContextForPrompt($academicContextData);
-        $systemInstruction = $this->getSystemPrompt() . "\n\n" . $formattedContext;
-
-        // 1. Buscar o crear AiConversation en MongoDB
+        // 1. Obtener o crear conversación en MongoDB (con respaldo de aislamiento por usuario en Cache)
         $conversation = null;
         if (!empty($conversationId)) {
+            $mongoFound = null;
             try {
-                $conversation = AiConversation::where('user_id', $userId)
-                    ->find($conversationId);
-
-                if (!$conversation) {
-                    $conversation = AiConversation::where('_id', $conversationId)
-                        ->where('user_id', $userId)
-                        ->first();
+                $mongoFound = AiConversation::find($conversationId);
+                if (!$mongoFound) {
+                    $mongoFound = AiConversation::where('_id', $conversationId)->first();
                 }
             } catch (Throwable $e) {
                 Log::error('Error consultando AiConversation en MongoDB: ' . $e->getMessage());
-                $conversation = null;
+                $mongoFound = null;
+            }
+
+            if ($mongoFound) {
+                if ((int) $mongoFound->user_id !== $userId) {
+                    throw new ModelNotFoundException('La conversación no pertenece al usuario autenticado.');
+                }
+                $conversation = $mongoFound;
+            } else {
+                $cachedConv = Cache::get("ai_conversation:{$conversationId}");
+                if ($cachedConv !== null) {
+                    if ((int) ($cachedConv['user_id'] ?? 0) !== $userId) {
+                        throw new ModelNotFoundException('La conversación no pertenece al usuario autenticado.');
+                    }
+                    $conversation = new AiConversation([
+                        'user_id' => $userId,
+                        'title' => $cachedConv['title'] ?? $titleSnippet,
+                        'messages' => $cachedConv['messages'] ?? [],
+                        'context' => $cachedConv['context'] ?? [],
+                    ]);
+                    $conversation->_id = $conversationId;
+                } else {
+                    throw new ModelNotFoundException('Conversación no encontrada o inaccesible para este usuario.');
+                }
             }
         }
+
+        $academicContextData = $this->aiContextService->buildAcademicContext($userId);
+        $formattedContext = $this->aiContextService->formatContextForPrompt($academicContextData);
 
         if (!$conversation) {
             try {
@@ -89,92 +108,78 @@ PROMPT;
                 ]);
             } catch (Throwable $e) {
                 Log::error('Error guardando en MongoDB (AiConversation::create): ' . $e->getMessage());
+                $conversation = new AiConversation([
+                    'user_id' => $userId,
+                    'title' => $titleSnippet,
+                    'messages' => [],
+                    'context' => $academicContextData,
+                ]);
+                $conversation->_id = (string) Str::uuid();
             }
         }
 
-        // En mongodb/laravel-mongodb v5 la clave primaria está en ->id o ->getKey()
-        $activeConversationId = $conversation
-            ? (string) ($conversation->id ?? $conversation->_id ?? $conversation->getKey())
-            : ($conversationId ?: '');
+        $convIdStr = (string) ($conversation->id ?? $conversation->_id ?? $conversation->getKey() ?? Str::uuid());
 
-        // 2. Consultar en MongoDB los últimos 10 mensajes del usuario ordenados cronológicamente
-        $history = [];
+        // 2. Consultar en MongoDB (ChatHistory o AiConversation) los últimos 10 mensajes cronológicos
+        $existingMessages = is_string($conversation->messages)
+            ? (json_decode($conversation->messages, true) ?: [])
+            : ($conversation->messages ?? []);
+
+        $recentMessages = [];
         try {
-            $query = ChatHistory::where('user_id', $userId);
-            if (!empty($activeConversationId)) {
-                $query->where('conversation_id', $activeConversationId);
-            }
-
-            $history = $query->orderBy('created_at', 'desc')
+            $historyDocs = ChatHistory::where('user_id', $userId)
+                ->where('conversation_id', $convIdStr)
+                ->orderBy('created_at', 'desc')
                 ->limit(10)
                 ->get()
                 ->reverse()
-                ->values()
-                ->map(function ($msg) {
-                    return [
-                        'role' => $msg->role === 'model' ? 'model' : 'user',
-                        'content' => (string) $msg->content,
-                    ];
-                })
-                ->toArray();
+                ->values();
 
-            if (empty($history) && $conversation) {
-                $rawMessages = is_string($conversation->messages)
-                    ? (json_decode($conversation->messages, true) ?: [])
-                    : ($conversation->messages ?? []);
-
-                foreach (array_slice($rawMessages, -10) as $m) {
-                    $history[] = [
-                        'role' => ($m['role'] ?? 'user') === 'model' ? 'model' : 'user',
-                        'content' => (string) ($m['content'] ?? ''),
-                    ];
-                }
+            foreach ($historyDocs as $doc) {
+                $recentMessages[] = [
+                    'role' => $doc->role === 'model' ? 'model' : 'user',
+                    'content' => (string) $doc->content,
+                ];
             }
         } catch (Throwable $e) {
             Log::error('Error consultando ChatHistory en MongoDB: ' . $e->getMessage());
-            $history = [];
         }
 
-        // Fallback de historial desde PostgreSQL si MongoDB no estaba disponible y es una conversación existente
-        if (empty($history) && !empty($conversationId) && is_numeric($conversationId)) {
-            try {
-                $pgMessages = AiChatMessage::where('session_id', (int) $conversationId)
-                    ->orderBy('id', 'desc')
-                    ->limit(10)
-                    ->get()
-                    ->reverse()
-                    ->values();
+        if (empty($recentMessages) && !empty($existingMessages)) {
+            $recentMessages = array_slice($existingMessages, -10);
+        }
 
-                foreach ($pgMessages as $pm) {
-                    $history[] = [
-                        'role' => $pm->sender_type === 'user' ? 'user' : 'model',
-                        'content' => (string) $pm->message,
-                    ];
-                }
-            } catch (Throwable $e) {
-                Log::error('Error consultando historial de respaldo en PostgreSQL: ' . $e->getMessage());
+        $formattedHistory = "";
+        if (!empty($recentMessages)) {
+            $formattedHistory .= "\nHISTORIAL RECIENTE DE LA CONVERSACIÓN:\n";
+            foreach ($recentMessages as $msg) {
+                $roleLabel = ($msg['role'] ?? 'user') === 'user' ? 'Estudiante' : 'ATHENA';
+                $formattedHistory .= "{$roleLabel}: " . ($msg['content'] ?? '') . "\n";
             }
         }
 
-        // 3. Enviar historial + nuevo prompt a Gemini 3.1 Flash-Lite
-        $aiResponse = $this->geminiService->generateChatWithHistory(
-            $history,
-            $userMessage,
-            $systemInstruction
-        );
+        // 3. Construir Prompt completo con contexto e historial y enviarlo a Gemini
+        $fullPrompt = $this->getSystemPrompt() . "\n\n"
+            . $formattedContext . "\n"
+            . $formattedHistory . "\n"
+            . "MENSAJE ACTUAL DEL ESTUDIANTE:\n"
+            . "\"{$userMessage}\"\n\n"
+            . "RESPUESTA DE ATHENA:";
+
+        $aiResponse = $this->geminiService->generateText($fullPrompt);
 
         // 4. Guardar mensajes en ChatHistory (MongoDB)
         try {
             ChatHistory::create([
                 'user_id' => $userId,
-                'conversation_id' => $activeConversationId,
+                'conversation_id' => $convIdStr,
                 'role' => 'user',
                 'content' => $userMessage,
             ]);
 
             ChatHistory::create([
                 'user_id' => $userId,
-                'conversation_id' => $activeConversationId,
+                'conversation_id' => $convIdStr,
                 'role' => 'model',
                 'content' => $aiResponse,
             ]);
@@ -182,98 +187,81 @@ PROMPT;
             Log::error('Error guardando en MongoDB (ChatHistory): ' . $e->getMessage());
         }
 
-        // 5. Guardar el array de messages actualizado en AiConversation (MongoDB)
-        $mongoSaved = false;
-        if ($conversation) {
-            try {
-                $existingMessages = is_string($conversation->messages)
-                    ? (json_decode($conversation->messages, true) ?: [])
-                    : ($conversation->messages ?? []);
+        // 5. Guardar mensajes en AiConversation (MongoDB) y sincronizar respaldo aislado en Cache
+        $userMsgStruct = [
+            'role' => 'user',
+            'content' => $userMessage,
+            'created_at' => now()->toIso8601String(),
+        ];
 
-                $existingMessages[] = [
-                    'role' => 'user',
-                    'content' => $userMessage,
-                    'created_at' => now()->toIso8601String(),
-                ];
-                $existingMessages[] = [
-                    'role' => 'model',
-                    'content' => $aiResponse,
-                    'created_at' => now()->toIso8601String(),
-                ];
+        $aiMsgStruct = [
+            'role' => 'model',
+            'content' => $aiResponse,
+            'created_at' => now()->toIso8601String(),
+        ];
 
-                $conversation->messages = $existingMessages;
-                $conversation->context = $academicContextData;
-                $conversation->save();
+        $existingMessages[] = $userMsgStruct;
+        $existingMessages[] = $aiMsgStruct;
 
-                $activeConversationId = (string) ($conversation->id ?? $conversation->_id ?? $conversation->getKey());
-                $mongoSaved = !empty($activeConversationId);
+        $existingCache = Cache::get("ai_conversation:{$convIdStr}");
+        $createdAtStr = is_array($existingCache) && !empty($existingCache['created_at'])
+            ? $existingCache['created_at']
+            : ($conversation->created_at ? $conversation->created_at->toDateTimeString() : now()->toDateTimeString());
 
-                AiInteraction::create([
-                    'user_id' => $userId,
-                    'conversation_id' => $activeConversationId,
-                    'type' => 'chat',
-                    'user_message' => $userMessage,
-                    'ai_response' => $aiResponse,
-                    'metadata' => [
-                        'model' => config('services.gemini.model', 'gemini-3.1-flash-lite'),
-                    ],
-                ]);
+        Cache::put("ai_conversation:{$convIdStr}", [
+            '_id' => $convIdStr,
+            'id' => $convIdStr,
+            'user_id' => $userId,
+            'title' => $conversation->title ?? $titleSnippet,
+            'messages' => $existingMessages,
+            'context' => $academicContextData,
+            'created_at' => $createdAtStr,
+            'updated_at' => now()->toDateTimeString(),
+        ], 86400);
 
-                AiLearningContext::updateOrCreate(
-                    ['user_id' => $userId],
-                    [
-                        'strengths' => $academicContextData['strong_topics'] ?? [],
-                        'weaknesses' => $academicContextData['weak_topics'] ?? [],
-                        'recent_performance' => $academicContextData['stats'] ?? [],
-                        'updated_at' => now(),
-                    ]
-                );
-            } catch (Throwable $e) {
-                Log::error('Error guardando en MongoDB (AiConversation::save): ' . $e->getMessage());
-            }
+        $userConvIndex = Cache::get("ai_user_conversations:{$userId}", []);
+        if (!is_array($userConvIndex)) {
+            $userConvIndex = [];
+        }
+        $userConvIndex = array_values(array_diff($userConvIndex, [$convIdStr]));
+        array_unshift($userConvIndex, $convIdStr);
+        Cache::put("ai_user_conversations:{$userId}", $userConvIndex, 86400);
+
+        try {
+            $conversation->messages = $existingMessages;
+            $conversation->context = $academicContextData;
+            $conversation->save();
+        } catch (Throwable $e) {
+            Log::error('Error guardando en MongoDB (AiConversation::save): ' . $e->getMessage());
         }
 
-        // Respaldo automático en PostgreSQL (AiChatSession / AiChatMessage) si MongoDB falló
-        if (!$mongoSaved) {
-            try {
-                $pgSession = null;
-                if (!empty($conversationId) && is_numeric($conversationId)) {
-                    $pgSession = AiChatSession::where('id', (int) $conversationId)
-                        ->where('user_id', $userId)
-                        ->first();
-                }
-                if (!$pgSession) {
-                    $pgSession = AiChatSession::create([
-                        'user_id' => $userId,
-                        'title' => $titleSnippet,
-                        'started_at' => now(),
-                    ]);
-                } else {
-                    $pgSession->touch();
-                }
+        try {
+            AiInteraction::create([
+                'user_id' => $userId,
+                'conversation_id' => $convIdStr,
+                'type' => 'chat',
+                'user_message' => $userMessage,
+                'ai_response' => $aiResponse,
+                'metadata' => [
+                    'model' => config('services.gemini.model', 'gemini-3.1-flash-lite'),
+                ],
+            ]);
 
-                AiChatMessage::create([
-                    'session_id' => $pgSession->id,
-                    'sender_type' => 'user',
-                    'message' => $userMessage,
-                    'sent_at' => now(),
-                ]);
-                AiChatMessage::create([
-                    'session_id' => $pgSession->id,
-                    'sender_type' => 'ai',
-                    'message' => $aiResponse,
-                    'sent_at' => now(),
-                ]);
-
-                $activeConversationId = (string) $pgSession->id;
-            } catch (Throwable $e) {
-                Log::error('Error guardando respaldo de chat en PostgreSQL: ' . $e->getMessage());
-            }
+            AiLearningContext::updateOrCreate(
+                ['user_id' => $userId],
+                [
+                    'strengths' => $academicContextData['strong_topics'] ?? [],
+                    'weaknesses' => $academicContextData['weak_topics'] ?? [],
+                    'recent_performance' => $academicContextData['stats'] ?? [],
+                    'updated_at' => now(),
+                ]
+            );
+        } catch (Throwable $e) {
+            // Capturar silenciosamente cualquier error en colecciones secundarias
         }
 
-        // 6. Retornar respuesta al controlador / frontend
         return [
-            'conversation_id' => $activeConversationId,
+            'conversation_id' => $convIdStr,
             'title' => $conversation->title ?? $titleSnippet,
             'message' => $userMessage,
             'ai_response' => $aiResponse,
@@ -281,12 +269,14 @@ PROMPT;
     }
 
     /**
-     * Obtiene el listado de conversaciones del estudiante desde MongoDB.
+     * Obtiene el listado de conversaciones del estudiante desde MongoDB (con respaldo aislado por usuario en Cache).
      */
     public function getUserConversations(int $userId): array
     {
+        $userId = (int) $userId;
+
         try {
-            $conversations = AiConversation::where('user_id', (int) $userId)
+            $conversations = AiConversation::where('user_id', $userId)
                 ->orderBy('updated_at', 'desc')
                 ->get();
 
@@ -295,33 +285,70 @@ PROMPT;
                 $messages = is_string($conv->messages)
                     ? (json_decode($conv->messages, true) ?: [])
                     : ($conv->messages ?? []);
-                $lastMsg = end($messages);
+                $lastMsg = !empty($messages) ? end($messages) : null;
 
                 return [
                     '_id' => $serializedId,
                     'id' => $serializedId,
                     'title' => (string) ($conv->title ?: 'Conversación'),
                     'total_messages' => count($messages),
-                    'last_message' => $lastMsg['content'] ?? '',
-                    'updated_at' => $conv->updated_at ? $conv->updated_at->toIso8601String() : null,
+                    'last_message' => is_array($lastMsg) ? ($lastMsg['content'] ?? '') : '',
+                    'updated_at' => $conv->updated_at ? $conv->updated_at->toDateTimeString() : null,
                 ];
             })->toArray();
         } catch (Throwable $e) {
             Log::error('Error en getUserConversations (MongoDB): ' . $e->getMessage());
-            return [];
+
+            $userConvIndex = Cache::get("ai_user_conversations:{$userId}", []);
+            if (!is_array($userConvIndex) || empty($userConvIndex)) {
+                return [];
+            }
+
+            $results = [];
+            $seenIds = [];
+
+            foreach ($userConvIndex as $convId) {
+                $convIdStr = (string) $convId;
+                if ($convIdStr === '' || isset($seenIds[$convIdStr])) {
+                    continue;
+                }
+
+                $cachedConv = Cache::get("ai_conversation:{$convIdStr}");
+                if (!is_array($cachedConv) || (int) ($cachedConv['user_id'] ?? 0) !== $userId) {
+                    continue;
+                }
+
+                $seenIds[$convIdStr] = true;
+                $messages = is_array($cachedConv['messages'] ?? null) ? $cachedConv['messages'] : [];
+                $lastMsg = !empty($messages) ? end($messages) : null;
+                $resolvedId = (string) ($cachedConv['id'] ?? $convIdStr);
+
+                $results[] = [
+                    '_id' => $resolvedId,
+                    'id' => $resolvedId,
+                    'title' => $cachedConv['title'] ?? 'Conversación',
+                    'total_messages' => count($messages),
+                    'last_message' => is_array($lastMsg) ? ($lastMsg['content'] ?? '') : '',
+                    'updated_at' => $cachedConv['updated_at'] ?? null,
+                ];
+            }
+
+            return $results;
         }
     }
 
     /**
-     * Obtiene los mensajes de una conversación específica.
+     * Obtiene los mensajes de una conversación específica validando pertenencia al usuario.
      */
     public function getConversation(int $userId, string $conversationId): array
     {
+        $userId = (int) $userId;
+
         try {
-            $conv = AiConversation::where('user_id', (int) $userId)->find($conversationId);
+            $conv = AiConversation::where('user_id', $userId)->find($conversationId);
             if (!$conv) {
                 $conv = AiConversation::where('_id', $conversationId)
-                    ->where('user_id', (int) $userId)
+                    ->where('user_id', $userId)
                     ->firstOrFail();
             }
 
@@ -336,10 +363,22 @@ PROMPT;
                 'title' => (string) ($conv->title ?: 'Conversación'),
                 'messages' => array_values($messages),
                 'context' => $conv->context ?? [],
-                'created_at' => $conv->created_at ? $conv->created_at->toIso8601String() : null,
+                'created_at' => $conv->created_at ? $conv->created_at->toDateTimeString() : null,
             ];
         } catch (Throwable $e) {
-            Log::error('Error en getConversation (MongoDB): ' . $e->getMessage());
+            $cachedConv = Cache::get("ai_conversation:{$conversationId}");
+            if ($cachedConv !== null && (int) ($cachedConv['user_id'] ?? 0) === $userId) {
+                $resolvedId = (string) ($cachedConv['id'] ?? $conversationId);
+                return [
+                    '_id' => $resolvedId,
+                    'id' => $resolvedId,
+                    'title' => $cachedConv['title'],
+                    'messages' => $cachedConv['messages'] ?? [],
+                    'context' => $cachedConv['context'] ?? [],
+                    'created_at' => $cachedConv['created_at'] ?? null,
+                ];
+            }
+
             throw new ModelNotFoundException("Conversación no encontrada.");
         }
     }

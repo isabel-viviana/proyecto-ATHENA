@@ -63,17 +63,19 @@ class EnsureAdminAuthenticated
         }
 
         // 4. Verificación estricta de rol administrativo
-        $role = strtolower((string) ($payload['role'] ?? ''));
-        $allowedRoles = ['admin', 'superadmin', 'docente', 'coordinador'];
+        $rawRole = strtolower(trim((string) ($payload['role'] ?? '')));
+        $role = $rawRole === 'super_admin' ? 'superadmin' : $rawRole;
+        $allowedRoles = ['admin', 'superadmin', 'support', 'docente', 'coordinador'];
 
         if (!in_array($role, $allowedRoles, true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Acceso denegado: El usuario autenticado no posee privilegios de administración académica.',
-                'role_detected' => $role,
+                'message' => 'Acceso denegado: El usuario autenticado no posee privilegios de administración.',
+                'role_detected' => $rawRole,
             ], 403);
         }
 
+        $payload['role'] = $role;
         $request->attributes->set('auth_admin', $payload);
 
         return $next($request);

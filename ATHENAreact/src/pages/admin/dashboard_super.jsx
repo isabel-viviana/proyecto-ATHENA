@@ -1,141 +1,176 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./dashboard_super.css";
+import { getAdminStats } from "../../api/documents";
+
+const SUBJECT_ICONS = {
+    1: "fa-solid fa-book-open",
+    2: "fa-solid fa-calculator",
+    3: "fa-solid fa-flask",
+    4: "fa-solid fa-landmark",
+    5: "fa-solid fa-earth-americas",
+};
 
 const DashboardSuper = () => {
-    // 1. Header ejecutivo data estática
-    const currentDate = "Miércoles, 26 de Agosto de 2026";
+    const navigate = useNavigate();
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
 
-    // 2. Tarjetas KPI (4)
+    const currentDate = new Date().toLocaleDateString("es-CO", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+    });
+
+    const loadStats = async () => {
+        setLoading(true);
+        setError("");
+        try {
+            const res = await getAdminStats();
+            if (res?.success && res?.data) {
+                setData(res.data);
+            }
+        } catch (err) {
+            setError(
+                err?.response?.data?.message ||
+                    "No se pudieron cargar las métricas ejecutivas de MySQL y Supabase."
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadStats();
+    }, []);
+
+    const users = data?.users || { total: 0, active: 0, suspended: 0, by_role: {}, recent_users: [] };
+    const catalog = data?.catalog || { total_subjects: 0, total_topics: 0, total_stimuli: 0 };
+    const questions = data?.questions || {
+        total: 0,
+        official_bank: 0,
+        by_status: { published: 0, review: 0, draft: 0, archived: 0 },
+    };
+    const activity = data?.academic_activity || {
+        total_exam_attempts: 0,
+        completed_exam_attempts: 0,
+        total_student_answers: 0,
+        overall_accuracy: 0,
+        recent_attempts: [],
+    };
+    const subjectsBreakdown = data?.subjects_breakdown || [];
+
     const kpis = [
         {
-            label: "Usuarios activos",
-            value: "18,420",
-            variation: "+14.8% este mes",
+            label: "Total Usuarios (MySQL)",
+            value: String(users.total ?? 0),
+            variation: `Estudiantes: ${users.by_role?.student || 0} • Admins: ${(users.by_role?.admin || 0) + (users.by_role?.superadmin || 0)} • Soporte: ${users.by_role?.support || 0}`,
             icon: "fa-solid fa-users",
             iconTheme: "green",
             isSafe: false,
         },
         {
-            label: "Simulacros hoy",
-            value: "6,812",
-            variation: "+22.4% vs ayer",
-            icon: "fa-solid fa-clipboard-check",
-            iconTheme: "blue",
-            isSafe: false,
-        },
-        {
-            label: "Preguntas ICFES",
-            value: "5,420",
-            variation: "+180 agregadas",
+            label: "Preguntas en Supabase",
+            value: String(questions.total ?? 0),
+            variation: `${questions.by_status?.published || 0} publicadas • ${questions.by_status?.review || 0} revisión • ${questions.by_status?.draft || 0} borrador`,
             icon: "fa-solid fa-layer-group",
             iconTheme: "purple",
             isSafe: false,
         },
         {
-            label: "Errores críticos",
-            value: "3",
-            variation: "-66% resueltos",
-            icon: "fa-solid fa-shield-halved",
-            iconTheme: "danger",
+            label: "Áreas y Temas ICFES",
+            value: `${catalog.total_subjects} / ${catalog.total_topics}`,
+            variation: `${catalog.total_subjects} áreas • ${catalog.total_topics} temas • ${catalog.total_stimuli || 0} estímulos`,
+            icon: "fa-solid fa-book-bookmark",
+            iconTheme: "blue",
+            isSafe: false,
+        },
+        {
+            label: "Actividad Académica Real",
+            value: `${activity.completed_exam_attempts}/${activity.total_exam_attempts}`,
+            variation: `${activity.total_student_answers} respuestas (${activity.overall_accuracy}% acierto global)`,
+            icon: "fa-solid fa-clipboard-check",
+            iconTheme: "green",
             isSafe: true,
         },
     ];
 
-    // 3. Actividad en vivo (6 eventos con hora, icono y estado)
-    const liveActivities = [
-        {
-            title: "María terminó un simulacro",
-            time: "Hace 3 min",
-            status: "Completado",
-            statusType: "success",
-            icon: "fa-solid fa-graduation-cap",
-            iconColor: "green",
-        },
-        {
-            title: "28 nuevos registros de estudiantes",
-            time: "Hace 12 min",
-            status: "Registrados",
-            statusType: "info",
-            icon: "fa-solid fa-user-plus",
-            iconColor: "blue",
-        },
-        {
-            title: "Nueva pregunta agregada (Matemáticas)",
-            time: "Hace 25 min",
-            status: "Publicada",
-            statusType: "success",
-            icon: "fa-solid fa-file-circle-plus",
+    const liveActivities = [];
+
+    (activity.recent_attempts || []).slice(0, 4).forEach((att) => {
+        liveActivities.push({
+            title: `${att.student_name} — ${att.title || "Simulacro ICFES"}`,
+            time: att.created_at
+                ? new Date(att.created_at).toLocaleDateString("es-CO", {
+                      month: "short",
+                      day: "2-digit",
+                  })
+                : "Reciente",
+            status:
+                att.status === "completed"
+                    ? `Completado (${att.score_percent ?? 0}%)`
+                    : "En progreso",
+            statusType: att.status === "completed" ? "success" : "info",
+            icon: "fa-solid fa-file-signature",
+            iconColor: att.status === "completed" ? "green" : "blue",
+        });
+    });
+
+    (users.recent_users || []).slice(0, 3).forEach((u) => {
+        liveActivities.push({
+            title: `Cuenta registrada: ${u.full_name} (${u.role})`,
+            time: u.created_at
+                ? new Date(u.created_at).toLocaleDateString("es-CO", {
+                      month: "short",
+                      day: "2-digit",
+                  })
+                : "Reciente",
+            status: u.status,
+            statusType: u.status === "Activo" ? "info" : "warning",
+            icon: "fa-solid fa-user-check",
             iconColor: "purple",
-        },
-        {
-            title: "Error IA recuperado automáticamente",
-            time: "Hace 40 min",
-            status: "Auto-recuperado",
-            statusType: "warning",
-            icon: "fa-solid fa-robot",
-            iconColor: "amber",
-        },
-        {
-            title: "Copia de respaldo en la nube finalizada",
-            time: "Hace 1 hora",
-            status: "Completado",
-            statusType: "success",
-            icon: "fa-solid fa-database",
-            iconColor: "cyan",
-        },
-        {
-            title: "Simulacro Masivo Calificado (Grado 11-A)",
-            time: "Hace 2 horas",
-            status: "Calificado",
-            statusType: "info",
-            icon: "fa-solid fa-chart-simple",
-            iconColor: "blue",
-        },
-    ];
+        });
+    });
 
-    // 4. Rendimiento por materia (5 barras horizontales)
-    const subjectsPerformance = [
-        { name: "Matemáticas", percentage: 82, icon: "fa-solid fa-calculator" },
-        { name: "Lectura Crítica", percentage: 76, icon: "fa-solid fa-book-open" },
-        { name: "Ciencias Naturales", percentage: 71, icon: "fa-solid fa-flask" },
-        { name: "Sociales y Ciudadanas", percentage: 69, icon: "fa-solid fa-landmark" },
-        { name: "Inglés", percentage: 88, icon: "fa-solid fa-earth-americas" },
-    ];
-
-    // 5. Acciones rápidas (4 botones grandes)
     const quickActions = [
         {
-            title: "Crear estudiante",
-            desc: "Registrar y asignar rol académico a un nuevo usuario",
-            icon: "fa-solid fa-user-plus",
+            title: "Gestionar Usuarios y Roles",
+            desc: "Crear cuentas, asignar roles (Admin, Soporte, Super) y controlar acceso",
+            icon: "fa-solid fa-users-gear",
+            path: "/admin/users",
         },
         {
-            title: "Agregar pregunta",
-            desc: "Crear y catalogar nuevo reactivo en el banco ICFES",
-            icon: "fa-solid fa-plus",
+            title: "Banco de Preguntas ICFES",
+            desc: "Crear preguntas manuales, revisar extracciones IA y publicar reactivos",
+            icon: "fa-solid fa-layer-group",
+            path: "/admin/questions",
         },
         {
-            title: "Enviar notificación",
-            desc: "Emitir alertas globales o avisos de mantenimiento",
-            icon: "fa-solid fa-bullhorn",
+            title: "Áreas y Temas Curriculares",
+            desc: "Administrar el catálogo oficial de áreas y temas en Supabase",
+            icon: "fa-solid fa-book-bookmark",
+            path: "/admin/subjects",
         },
         {
-            title: "Ver analítica",
-            desc: "Consultar métricas avanzadas y reportes de desempeño",
-            icon: "fa-solid fa-chart-pie",
+            title: "Simulacros y Actividad",
+            desc: "Consultar disponibilidad de preguntas por área e intentos de estudiantes",
+            icon: "fa-solid fa-file-signature",
+            path: "/admin/exams",
         },
     ];
 
     return (
         <div className="super-dashboard">
-            {/* 1. HEADER EJECUTIVO */}
             <section className="super-header-exec">
                 <div className="super-header-left">
                     <div className="super-header-saludo">
-                        Bienvenido, Super Administrador
-                        <span className="super-header-saludo-badge">Centro de Operaciones</span>
+                        Panel Ejecutivo — Super Administrador
+                        <span className="super-header-saludo-badge">Control Global</span>
                     </div>
                     <div className="super-header-meta">
-                        <span className="super-header-date">
+                        <span className="super-header-date" style={{ textTransform: "capitalize" }}>
                             <i className="fa-regular fa-calendar"></i>
                             {currentDate}
                         </span>
@@ -143,17 +178,41 @@ const DashboardSuper = () => {
                 </div>
 
                 <div className="super-header-right">
-                    <div className="super-status-pill">
+                    <button
+                        type="button"
+                        onClick={loadStats}
+                        className="super-status-pill"
+                        style={{ cursor: "pointer", border: "none" }}
+                        title="Actualizar métricas en vivo"
+                    >
                         <span className="super-pulse-dot"></span>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
-                            <span className="super-status-text">Sistema operativo</span>
-                            <span className="super-status-sub">99.98% Uptime • 14ms</span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1px", textAlign: "left" }}>
+                            <span className="super-status-text">
+                                {loading ? "Sincronizando..." : "MySQL + Supabase Conectados"}
+                            </span>
+                            <span className="super-status-sub">
+                                {users.active} cuentas activas • {questions.by_status?.published || 0} preguntas publicadas
+                            </span>
                         </div>
-                    </div>
+                    </button>
                 </div>
             </section>
 
-            {/* 2. TARJETAS KPI (4) */}
+            {error && (
+                <div
+                    style={{
+                        padding: "12px 16px",
+                        borderRadius: "10px",
+                        background: "rgba(239, 68, 68, 0.14)",
+                        border: "1px solid rgba(239, 68, 68, 0.35)",
+                        color: "#fca5a5",
+                        marginBottom: "16px",
+                    }}
+                >
+                    <i className="fa-solid fa-triangle-exclamation"></i> {error}
+                </div>
+            )}
+
             <section className="super-kpis-grid">
                 {kpis.map((kpi, idx) => (
                     <div key={idx} className="super-kpi-card">
@@ -164,13 +223,13 @@ const DashboardSuper = () => {
                             </div>
                         </div>
                         <div className="super-kpi-body">
-                            <span className="super-kpi-value">{kpi.value}</span>
+                            <span className="super-kpi-value">{loading ? "..." : kpi.value}</span>
                             <span
                                 className={`super-kpi-variation ${
                                     kpi.isSafe ? "super-kpi-variation--safe" : ""
                                 }`}
                             >
-                                <i className="fa-solid fa-arrow-trend-up"></i>
+                                <i className="fa-solid fa-circle-info"></i>
                                 {kpi.variation}
                             </span>
                         </div>
@@ -178,87 +237,124 @@ const DashboardSuper = () => {
                 ))}
             </section>
 
-            {/* 3 & 4. SECCIÓN MEDIA: ACTIVIDAD EN VIVO Y RENDIMIENTO POR MATERIA */}
             <section className="super-middle-grid">
-                {/* 3. ACTIVIDAD EN VIVO */}
                 <div className="super-card-panel">
                     <div className="super-panel-header">
                         <h2 className="super-panel-title">
                             <i className="fa-solid fa-wave-square"></i>
-                            Actividad en vivo
+                            Actividad Académica y Registros Recientes
                         </h2>
                         <span className="super-panel-tag">
                             <span className="super-panel-tag-dot"></span>
-                            Feed en tiempo real
+                            Datos Reales
                         </span>
                     </div>
 
                     <div className="super-activity-feed">
-                        {liveActivities.map((act, index) => (
-                            <div key={index} className="super-activity-item">
-                                <div className="super-activity-left">
-                                    <div
-                                        className={`super-activity-icon super-activity-icon--${act.iconColor}`}
-                                    >
-                                        <i className={act.icon}></i>
-                                    </div>
-                                    <span className="super-activity-title">{act.title}</span>
-                                </div>
-                                <div className="super-activity-right">
-                                    <span
-                                        className={`super-activity-badge super-activity-badge--${act.statusType}`}
-                                    >
-                                        {act.status}
-                                    </span>
-                                    <span className="super-activity-time">{act.time}</span>
-                                </div>
+                        {loading ? (
+                            <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>
+                                Consultando actividad reciente...
                             </div>
-                        ))}
+                        ) : liveActivities.length > 0 ? (
+                            liveActivities.map((act, index) => (
+                                <div key={index} className="super-activity-item">
+                                    <div className="super-activity-left">
+                                        <div
+                                            className={`super-activity-icon super-activity-icon--${act.iconColor}`}
+                                        >
+                                            <i className={act.icon}></i>
+                                        </div>
+                                        <span className="super-activity-title">{act.title}</span>
+                                    </div>
+                                    <div className="super-activity-right">
+                                        <span
+                                            className={`super-activity-badge super-activity-badge--${act.statusType}`}
+                                        >
+                                            {act.status}
+                                        </span>
+                                        <span className="super-activity-time">{act.time}</span>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>
+                                Aún no se registran eventos recientes.
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* 4. RENDIMIENTO POR MATERIA */}
                 <div className="super-card-panel">
                     <div className="super-panel-header">
                         <h2 className="super-panel-title">
                             <i className="fa-solid fa-chart-simple"></i>
-                            Rendimiento por materia
+                            Banco y Precisión por Área ICFES
                         </h2>
-                        <span className="super-panel-tag">Promedio ICFES</span>
+                        <span className="super-panel-tag">Supabase PostgreSQL</span>
                     </div>
 
                     <div className="super-subjects-stack">
-                        {subjectsPerformance.map((subj, index) => (
-                            <div key={index} className="super-subject-row">
-                                <div className="super-subject-info">
-                                    <span className="super-subject-label">
-                                        <i className={subj.icon}></i>
-                                        {subj.name}
-                                    </span>
-                                    <span className="super-subject-pct">{subj.percentage}%</span>
+                        {subjectsBreakdown.map((subj) => {
+                            const maxQ = Math.max(1, questions.total || 1);
+                            const coveragePct = Math.min(
+                                100,
+                                Math.round(((subj.total_questions || 0) / maxQ) * 100)
+                            );
+                            const displayPct =
+                                subj.accuracy_avg !== null && subj.accuracy_avg !== undefined
+                                    ? `${subj.accuracy_avg}% acierto`
+                                    : `${subj.published_questions}/${subj.total_questions} pub.`;
+
+                            return (
+                                <div key={subj.id} className="super-subject-row">
+                                    <div className="super-subject-info">
+                                        <span className="super-subject-label">
+                                            <i
+                                                className={
+                                                    SUBJECT_ICONS[subj.id] || "fa-solid fa-book-bookmark"
+                                                }
+                                            ></i>
+                                            {subj.name}{" "}
+                                            <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                                                ({subj.topics_count} temas • {subj.total_questions} preg.)
+                                            </span>
+                                        </span>
+                                        <span className="super-subject-pct">{displayPct}</span>
+                                    </div>
+                                    <div className="super-bar-container">
+                                        <div
+                                            className="super-bar-fill"
+                                            style={{
+                                                width: `${
+                                                    subj.accuracy_avg !== null &&
+                                                    subj.accuracy_avg !== undefined
+                                                        ? subj.accuracy_avg
+                                                        : coveragePct
+                                                }%`,
+                                            }}
+                                        ></div>
+                                    </div>
                                 </div>
-                                <div className="super-bar-container">
-                                    <div
-                                        className="super-bar-fill"
-                                        style={{ width: `${subj.percentage}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </section>
 
-            {/* 5. ACCIONES RÁPIDAS */}
             <section className="super-quick-actions-panel">
                 <h2 className="super-section-heading">
                     <i className="fa-solid fa-bolt"></i>
-                    Acciones Rápidas
+                    Módulos de Administración Directa
                 </h2>
 
                 <div className="super-actions-grid">
                     {quickActions.map((action, idx) => (
-                        <button key={idx} className="super-action-btn" type="button">
+                        <button
+                            key={idx}
+                            className="super-action-btn"
+                            type="button"
+                            onClick={() => navigate(action.path)}
+                        >
                             <div className="super-action-btn-header">
                                 <div className="super-action-icon-wrap">
                                     <i className={action.icon}></i>

@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuthController;
+use App\Http\Controllers\Api\V1\Admin\AdminStatsController;
+use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\CatalogController;
 use App\Http\Controllers\Api\V1\Admin\DocumentController;
 use App\Http\Controllers\Api\V1\Admin\ExtractionController;
@@ -44,10 +46,32 @@ Route::prefix('v1')->group(function () {
 
         // Rutas protegidas bajo middleware 'admin.auth'
         Route::middleware('admin.auth')->group(function () {
-            // Catálogos ICFES
+            // Estadísticas administrativas unificadas (MySQL Core + Supabase PostgreSQL)
+            Route::get('/stats', [AdminStatsController::class, 'index']);
+
+            // Gestión real de Usuarios y Roles (MySQL Core + enriquecimiento académico)
+            Route::prefix('users')->group(function () {
+                Route::get('/', [AdminUserController::class, 'index']);
+                Route::post('/', [AdminUserController::class, 'store']);
+                Route::get('/{id}', [AdminUserController::class, 'show']);
+                Route::put('/{id}', [AdminUserController::class, 'update']);
+                Route::patch('/{id}/role', [AdminUserController::class, 'changeRole']);
+                Route::patch('/{id}/status', [AdminUserController::class, 'toggleStatus']);
+            });
+
+            // Catálogos ICFES (Áreas, Temas y Estímulos en Supabase PostgreSQL)
             Route::prefix('catalogs')->group(function () {
                 Route::get('/subjects', [CatalogController::class, 'subjects']);
+                Route::post('/subjects', [CatalogController::class, 'storeSubject']);
+                Route::put('/subjects/{id}', [CatalogController::class, 'updateSubject']);
+                Route::delete('/subjects/{id}', [CatalogController::class, 'destroySubject']);
+
                 Route::get('/topics', [CatalogController::class, 'topics']);
+                Route::post('/topics', [CatalogController::class, 'storeTopic']);
+                Route::put('/topics/{id}', [CatalogController::class, 'updateTopic']);
+                Route::delete('/topics/{id}', [CatalogController::class, 'destroyTopic']);
+
+                Route::get('/stimuli', [CatalogController::class, 'stimuli']);
             });
 
             // Gestión de Documentos Fuente PDF y Orquestador IQPE
@@ -81,9 +105,10 @@ Route::prefix('v1')->group(function () {
             // Bandeja Unificada de Revisión IQPE
             Route::get('/iqpe/review-queue', [IqpeReviewController::class, 'reviewQueue']);
 
-            // Revisión y Calibración Pedagógica de Reactivos
+            // Revisión, Creación Manual y Calibración Pedagógica de Reactivos
             Route::prefix('questions')->group(function () {
                 Route::get('/', [QuestionController::class, 'index']);
+                Route::post('/', [QuestionController::class, 'store']);
                 Route::post('/bulk-approve', [QuestionController::class, 'bulkApprove']);
                 Route::get('/{id}', [QuestionController::class, 'show']);
                 Route::get('/{id}/iqpe-detail', [IqpeReviewController::class, 'detail']);

@@ -7,16 +7,36 @@ use App\Services\AiService;
 use App\Services\GeminiService;
 use App\Services\ProgressService;
 use App\Models\User;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Laravel\Sanctum\Sanctum;
 use Mockery;
 use Tests\TestCase;
 
 class AiModuleTest extends TestCase
 {
+    protected User $authUser;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->artisan('migrate');
         $this->artisan('db:seed');
+
+        $this->authUser = User::where('email', 'juan.acevedo@athena.edu.co')->first() ?? User::first();
+        Sanctum::actingAs($this->authUser);
+    }
+
+    /**
+     * Prueba: POST /api/ai/message y demás endpoints IA sin token devuelven 401.
+     */
+    public function test_ai_endpoints_require_sanctum_authentication(): void
+    {
+        Auth::forgetGuards();
+
+        $this->postJson('/api/ai/message', ['message' => 'Hola'])->assertStatus(401);
+        $this->getJson('/api/ai/history')->assertStatus(401);
+        $this->getJson('/api/ai/conversations/conv-123')->assertStatus(401);
     }
 
     /**
@@ -215,7 +235,7 @@ class AiModuleTest extends TestCase
 
         // User 2 intenta continuar la conversación de User 1
         $user2 = User::factory()->create(['email' => 'user2ai@athena.edu.co']);
-        $this->actingAs($user2);
+        Sanctum::actingAs($user2);
 
         $this->mockGemini();
         $response2 = $this->postJson('/api/ai/message', [
@@ -226,6 +246,92 @@ class AiModuleTest extends TestCase
         // Debe fallar: conversación no pertenece a user2
         $response2->assertStatus(500)
             ->assertJson(['success' => false]);
+
+        // Y tampoco puede consultar el detalle de la conversación de User 1
+        $this->getJson("/api/ai/conversations/{$convId}")
+            ->assertStatus(404)
+            ->assertJson(['success' => false]);
+
+        // Verificar que la conversación quedó asociada al usuario autenticado original (authUser) y no a user2 ni a ID 1 arbitrario
+        $cached = Cache::get("ai_conversation:{$convId}");
+        $this->assertNotNull($cached);
+        $this->assertEquals($this->authUser->id, $cached['user_id']);
+    }
+
+    /**
+     * Prueba: Fallback de Cache en GET /api/ai/history recupera conversaciones por usuario sin mezclar ni duplicar cuando MongoDB no está disponible.
+     */
+    public function test_cache_fallback_history_and_user_isolation_without_mongo(): void
+    {
+        if ($this->isMongoAvailable()) {
+            $this->markTestSkipped('Esta prueba valida específicamente el fallback de Cache cuando MongoDB no está disponible.');
+        }
+
+        // Usuario 1 crea dos conversaciones y continúa la primera
+        Sanctum::actingAs($this->authUser);
+        $this->mockGemini('Respuesta 1 para Usuario 1');
+        $res1 = $this->postJson('/api/ai/message', [
+            'message' => 'Primera consulta de Usuario 1',
+            'conversation_id' => null,
+        ])->assertOk();
+        $conv1Id = $res1->json('data.conversation_id');
+
+        $this->mockGemini('Respuesta 2 para Usuario 1');
+        $res2 = $this->postJson('/api/ai/message', [
+            'message' => 'Segunda consulta de Usuario 1',
+            'conversation_id' => null,
+        ])->assertOk();
+        $conv2Id = $res2->json('data.conversation_id');
+
+        // Continuar primera conversación para verificar que no se duplica en el índice y actualiza total_messages
+        $this->mockGemini(' Continuación de primera consulta');
+        $this->postJson('/api/ai/message', [
+            'message' => 'Seguimiento en conversación 1',
+            'conversation_id' => $conv1Id,
+        ])->assertOk();
+
+        // Usuario 2 crea su propia conversación
+        $user2 = User::factory()->create(['email' => 'user2.history@athena.edu.co']);
+        Sanctum::actingAs($user2);
+        $this->mockGemini('Respuesta exclusiva para Usuario 2');
+        $resUser2 = $this->postJson('/api/ai/message', [
+            'message' => 'Consulta privada de Usuario 2',
+            'conversation_id' => null,
+        ])->assertOk();
+        $convUser2Id = $resUser2->json('data.conversation_id');
+
+        // Incluso si alguien inyectara el ID de conversación de Usuario 1 en el índice de Cache de Usuario 2, debe filtrarse por user_id
+        $pollutedIndex = Cache::get("ai_user_conversations:{$user2->id}", []);
+        $pollutedIndex[] = $conv1Id;
+        $pollutedIndex[] = $convUser2Id; // duplicado intencional
+        Cache::put("ai_user_conversations:{$user2->id}", $pollutedIndex, 86400);
+
+        // Consultar historial como Usuario 2: solo debe recibir su conversación (sin duplicados y sin conv1Id)
+        $historyUser2 = $this->getJson('/api/ai/history');
+        $historyUser2->assertOk()
+            ->assertJson(['success' => true])
+            ->assertJsonCount(1, 'data')
+            ->assertJsonStructure([
+                'success',
+                'message',
+                'data' => [
+                    ['id', 'title', 'total_messages', 'last_message', 'updated_at'],
+                ],
+            ]);
+        $this->assertEquals($convUser2Id, $historyUser2->json('data.0.id'));
+        $this->assertEquals(2, $historyUser2->json('data.0.total_messages'));
+
+        // Consultar historial como Usuario 1: debe recibir únicamente sus 2 conversaciones (conv1Id primero por haberse actualizado más recientemente)
+        Sanctum::actingAs($this->authUser);
+        $historyUser1 = $this->getJson('/api/ai/history');
+        $historyUser1->assertOk()
+            ->assertJson(['success' => true])
+            ->assertJsonCount(2, 'data');
+
+        $this->assertEquals($conv1Id, $historyUser1->json('data.0.id'));
+        $this->assertEquals(4, $historyUser1->json('data.0.total_messages'));
+        $this->assertEquals($conv2Id, $historyUser1->json('data.1.id'));
+        $this->assertEquals(2, $historyUser1->json('data.1.total_messages'));
     }
 
     /**
@@ -234,7 +340,7 @@ class AiModuleTest extends TestCase
     public function test_student_without_progress(): void
     {
         $newUser = User::factory()->create(['email' => 'nuevo.ia@athena.edu.co']);
-        $this->actingAs($newUser);
+        Sanctum::actingAs($newUser);
 
         $this->mockGemini('Te ayudo aunque aún no tengas simulacros.');
 

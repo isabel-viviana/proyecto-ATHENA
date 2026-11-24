@@ -21,6 +21,7 @@ trait UsesInMemoryQuestionBankSchema
             'database.default'                       => 'sqlite',
             'database.connections.sqlite'            => $sqliteConfig,
             'database.connections.question_bank'     => $sqliteConfig,
+            'database.connections.athena_core'       => $sqliteConfig,
             'queue.default'                          => 'database',
             'queue.connections.database.connection'  => 'question_bank',
             'queue.failed.database'                  => 'question_bank',
@@ -35,24 +36,67 @@ trait UsesInMemoryQuestionBankSchema
 
         DB::purge('sqlite');
         DB::purge('question_bank');
+        DB::purge('athena_core');
 
-        // Compartir exactamente el mismo PDO en memoria entre 'sqlite' y 'question_bank'
+        // Compartir exactamente el mismo PDO en memoria entre 'sqlite', 'question_bank' y 'athena_core'
         $sharedPdo = DB::connection('sqlite')->getPdo();
         DB::connection('question_bank')->setPdo($sharedPdo);
         DB::connection('question_bank')->setReadPdo($sharedPdo);
+        DB::connection('athena_core')->setPdo($sharedPdo);
+        DB::connection('athena_core')->setReadPdo($sharedPdo);
 
         $schema = Schema::connection('question_bank');
+
+        $schema->create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('full_name');
+            $table->string('email')->unique();
+            $table->string('firebase_uid')->nullable();
+            $table->string('phone', 30)->nullable();
+            $table->string('password')->nullable();
+            $table->string('role', 30)->default('student');
+            $table->string('avatar_url')->nullable();
+            $table->string('grade', 30)->nullable();
+            $table->integer('target_icfes_score')->default(350);
+            $table->integer('level')->default(1);
+            $table->integer('xp')->default(0);
+            $table->integer('coins')->default(0);
+            $table->integer('streak_days')->default(0);
+            $table->timestamp('email_verified_at')->nullable();
+            $table->timestamp('last_login_at')->nullable();
+            $table->string('remember_token', 100)->nullable();
+            $table->timestamps();
+        });
+
+        $schema->create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->string('tokenable_type');
+            $table->unsignedBigInteger('tokenable_id');
+            $table->string('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamps();
+        });
 
         $schema->create('subjects', function (Blueprint $table) {
             $table->integer('id')->primary();
             $table->string('name', 120);
+            $table->string('slug', 120)->nullable();
             $table->string('code', 60)->nullable();
+            $table->text('description')->nullable();
+            $table->timestamp('created_at')->nullable();
         });
 
         $schema->create('topics', function (Blueprint $table) {
             $table->integer('id')->primary();
             $table->integer('subject_id');
             $table->string('name', 180);
+            $table->string('slug', 180)->nullable();
+            $table->text('description')->nullable();
+            $table->boolean('is_verified')->default(true);
+            $table->timestamp('created_at')->nullable();
         });
 
         $schema->create('source_documents', function (Blueprint $table) {
@@ -71,7 +115,7 @@ trait UsesInMemoryQuestionBankSchema
         $schema->create('stimuli', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->integer('subject_id')->nullable();
-            $table->uuid('source_document_id');
+            $table->uuid('source_document_id')->nullable();
             $table->string('title')->nullable();
             $table->text('content_text')->nullable();
             $table->string('media_type', 30)->default('none');
@@ -91,7 +135,7 @@ trait UsesInMemoryQuestionBankSchema
             $table->integer('subject_id');
             $table->integer('topic_id')->nullable();
             $table->uuid('stimulus_id')->nullable();
-            $table->uuid('source_document_id');
+            $table->uuid('source_document_id')->nullable();
             $table->integer('order_in_group')->default(1);
             $table->text('statement');
             $table->string('question_image_path', 500)->nullable();

@@ -128,8 +128,8 @@ class IqpeAdminWorkflowService
             $publishBlockers[] = $msg;
         }
 
-        if (empty($question->subject_id) || $question->subject_id < 1 || $question->subject_id > 5) {
-            $msg = 'El área académica asignada no es válida dentro del marco oficial ICFES (1–5).';
+        if (empty($question->subject_id) || $question->subject_id < 1 || ($question->subject_id > 5 && ! \App\Models\Subject::where('id', (int) $question->subject_id)->exists())) {
+            $msg = 'El área académica asignada no es válida dentro del catálogo de áreas.';
             $approveBlockers[] = $msg;
             $publishBlockers[] = $msg;
         }

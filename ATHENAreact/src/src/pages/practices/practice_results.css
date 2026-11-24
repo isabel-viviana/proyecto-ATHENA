@@ -1,0 +1,146 @@
+/* =========================
+   RESET
+========================= */
+
+/* =========================
+   LAYOUT
+========================= */
+
+/* =========================
+   SIDEBAR
+========================= */
+
+/* =========================
+   MAIN
+========================= */
+
+.main {
+    flex: 1;
+    padding: 40px;
+}
+
+/* =========================
+   SUCCESS CARD
+========================= */
+
+.success-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 80px);
+}
+
+.success-card {
+    width: 100%;
+    max-width: 760px;
+
+    background: linear-gradient(180deg, #131e36, #10192e);
+
+    border: 1px solid var(--border);
+    border-radius: 24px;
+
+    padding: 60px;
+
+    text-align: center;
+
+    position: relative;
+    overflow: hidden;
+}
+
+.success-card::before {
+    content: "";
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 50%;
+    top: -120px;
+    right: -120px;
+}
+
+.success-icon {
+    width: 95px;
+    height: 95px;
+
+    margin: auto auto 30px;
+
+    border-radius: 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: rgba(16, 185, 129, 0.12);
+
+    border: 1px solid rgba(16, 185, 129, 0.3);
+
+    color: var(--green);
+
+    font-size: 36px;
+}
+
+.success-card h1 {
+    font-size: 42px;
+    margin-bottom: 14px;
+}
+
+.success-card p {
+    color: var(--muted);
+    font-size: 17px;
+}
+
+.success-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 40px;
+}
+
+.mini-box {
+    background: var(--card-light);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px;
+}
+
+.mini-box__label {
+    display: block;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.mini-box h3 {
+    font-size: 28px;
+}
+
+.success-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 40px;
+}
+
+.btn {
+    border: none;
+    border-radius: 14px;
+    padding: 14px 28px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-secondary {
+    background: #18273e;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-primary {
+    background: var(--yellow);
+    color: #111827;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}

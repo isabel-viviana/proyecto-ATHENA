@@ -2,13 +2,19 @@ import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import useAuthStore, { getRedirectPathByRole } from "../stores/useAuthStore";
 
-const ADMIN_ROLES = ["superadmin", "super_admin", "admin", "support"];
+const ADMIN_ROLES = [
+    "superadmin",
+    "super_admin",
+    "admin",
+    "support",
+    "docente",
+    "coordinador",
+];
 
 /**
  * Protege rutas del panel administrativo.
  * Redirige a /admin/login si no está autenticado,
- * o inmediatamente al dashboard de estudiante (/dashboard) si un estudiante
- * intenta escribir una ruta de administrador en la barra de direcciones.
+ * a /dashboard si es estudiante, y restringe /dashboard/superadmin exclusivamente a superadmin.
  */
 export default function AdminRoute({ children, allowedRoles = ADMIN_ROLES }) {
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -25,7 +31,27 @@ export default function AdminRoute({ children, allowedRoles = ADMIN_ROLES }) {
         }
     }, [location.pathname, isInitialized, isAuthenticated, fetchCurrentUser]);
 
-    if (!isInitialized || isAuthLoading) {
+    const storedAdminToken = localStorage.getItem("athena_admin_token");
+    let storedAdminRole = null;
+    try {
+        const parsed = JSON.parse(
+            localStorage.getItem("athena_admin_user") || "null"
+        );
+        storedAdminRole = parsed?.role || null;
+    } catch {
+        storedAdminRole = null;
+    }
+
+    const effectiveRole = String(role || storedAdminRole || "")
+        .toLowerCase()
+        .trim();
+    const normalizedRole =
+        effectiveRole === "super_admin" ? "superadmin" : effectiveRole;
+    const hasAdminSession =
+        (isAuthenticated || Boolean(storedAdminToken)) &&
+        allowedRoles.includes(effectiveRole);
+
+    if ((!isInitialized || isAuthLoading) && !storedAdminToken) {
         return (
             <div
                 style={{
@@ -48,13 +74,34 @@ export default function AdminRoute({ children, allowedRoles = ADMIN_ROLES }) {
         );
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !storedAdminToken) {
         return <Navigate to="/admin/login" state={{ from: location }} replace />;
     }
 
-    const currentRole = String(role || "student").toLowerCase();
-    if (!allowedRoles.includes(currentRole)) {
-        return <Navigate to={getRedirectPathByRole(currentRole)} replace />;
+    if (!hasAdminSession) {
+        return (
+            <Navigate
+                to={getRedirectPathByRole(effectiveRole || "student")}
+                replace
+            />
+        );
+    }
+
+    if (
+        (location.pathname.startsWith("/dashboard/superadmin") ||
+            location.pathname.startsWith("/super")) &&
+        normalizedRole !== "superadmin"
+    ) {
+        return (
+            <Navigate
+                to={
+                    normalizedRole === "support"
+                        ? "/support/dashboard"
+                        : "/dashboard/admin"
+                }
+                replace
+            />
+        );
     }
 
     return children;

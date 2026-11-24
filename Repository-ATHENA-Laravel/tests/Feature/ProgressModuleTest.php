@@ -6,15 +6,36 @@ use App\Models\Subject;
 use App\Models\Topic;
 use App\Models\User;
 use App\Models\UserTopicPerformance;
+use Illuminate\Support\Facades\Auth;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class ProgressModuleTest extends TestCase
 {
+    protected User $authUser;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->artisan('migrate');
         $this->artisan('db:seed');
+
+        $this->authUser = User::where('email', 'juan.acevedo@athena.edu.co')->first() ?? User::first();
+        Sanctum::actingAs($this->authUser);
+    }
+
+    /**
+     * Probar que GET /api/progress y subrutas sin token devuelven 401 y no hacen fallback a ID 1.
+     */
+    public function test_progress_endpoints_require_sanctum_authentication_without_id_1_fallback(): void
+    {
+        Auth::forgetGuards();
+
+        $this->getJson('/api/progress')->assertStatus(401);
+        $this->getJson('/api/progress/history')->assertStatus(401);
+        $this->getJson('/api/progress/stats')->assertStatus(401);
+        $this->getJson('/api/progress/subject/1')->assertStatus(401);
+        $this->getJson('/api/progress/topic/1')->assertStatus(401);
     }
 
     /**
@@ -153,7 +174,7 @@ class ProgressModuleTest extends TestCase
             'email' => 'nuevo.estudiante@athena.edu.co',
         ]);
 
-        $this->actingAs($newUser);
+        Sanctum::actingAs($newUser);
 
         $statsResponse = $this->getJson('/api/progress/stats');
         $statsResponse->assertStatus(200)
@@ -190,7 +211,7 @@ class ProgressModuleTest extends TestCase
         );
 
         // Consultar como user2
-        $this->actingAs($user2);
+        Sanctum::actingAs($user2);
         $responseUser2 = $this->getJson("/api/progress/topic/{$topic->id}");
 
         $responseUser2->assertStatus(200)

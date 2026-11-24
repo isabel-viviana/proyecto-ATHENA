@@ -144,6 +144,10 @@ class StudentTokenService
                 return null;
             }
 
+            if (($user->remember_token ?? null) === 'SUSPENDED') {
+                return null;
+            }
+
             $userStatus = strtolower(trim((string) ($user->status ?? 'active')));
             if (in_array($userStatus, ['blocked', 'suspended', 'suspendido', 'inactivo', 'inactive'], true)) {
                 return null;

@@ -20,6 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,
             'firebase.auth' => \App\Http\Middleware\FirebaseAuth::class,
         ]);
+
+        // Asegura que toda petición autenticada en la API verifique que el usuario no esté bloqueado
+        $middleware->appendToGroup('api', \App\Http\Middleware\EnsureUserIsActive::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (AuthenticationException $e, Request $request) {

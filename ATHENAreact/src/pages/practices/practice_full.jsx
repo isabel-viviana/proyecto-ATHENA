@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import Zorrito from "../../assets/images/Zorrito2D.png";
 import useExamStore from "../../stores/useExamStore";
+import useProgressStore from "../../stores/useProgressStore";
 import PracticeHeader from "./components/PracticeHeader";
 import PracticeOptions from "./components/PracticeOptions";
 import PracticeFooter from "./components/PracticeFooter";
@@ -189,6 +190,7 @@ const PracticeFull = () => {
 
             if (res && res.success && res.data) {
                 setFeedback(currentQuestion.id, res.data);
+                useProgressStore.getState().fetchDashboardProgress("all").catch(() => {});
             } else {
                 throw new Error(res?.message || "Error al calificar respuesta.");
             }

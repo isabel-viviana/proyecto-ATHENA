@@ -1,124 +1,181 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./dashboard_admin.css";
+import { getAdminStats, toggleAdminUserStatus } from "../../api/documents";
 
 const DashboardSupport = () => {
+    const navigate = useNavigate();
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [feedback, setFeedback] = useState("");
+
+    const loadSupportData = async () => {
+        setLoading(true);
+        setError("");
+        try {
+            const res = await getAdminStats();
+            if (res?.success && res?.data) {
+                setData(res.data);
+            }
+        } catch (err) {
+            setError(
+                err?.response?.data?.message ||
+                    "No se pudo consultar el estado operativo del panel de soporte."
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadSupportData();
+    }, []);
+
+    const users = data?.users || { total: 0, active: 0, suspended: 0, recent_users: [] };
+    const questions = data?.questions || { total: 0, with_warnings: 0, by_status: {} };
+    const activity = data?.academic_activity || { total_exam_attempts: 0, in_progress_exam_attempts: 0 };
+    const supportOverview = data?.support_overview || {
+        suspended_accounts: [],
+        questions_with_warnings: [],
+        documents_summary: { total: 0, completed: 0, failed: 0, recent: [] },
+    };
+    const canManageUsers = Boolean(data?.permissions?.can_manage_users);
+
+    const handleReactivateUser = async (u) => {
+        try {
+            const res = await toggleAdminUserStatus(u.id, "Activo");
+            setFeedback(res?.message || `Cuenta de ${u.full_name} reactivada exitosamente.`);
+            await loadSupportData();
+            window.dispatchEvent(new Event("athena-admin-stats-refresh"));
+        } catch (err) {
+            setError(err?.response?.data?.message || "No tienes permisos para reactivar cuentas directamente.");
+        }
+    };
+
     const stats = [
         {
-            label: "Tickets Abiertos",
-            value: "8",
-            trend: "3 Alta prioridad",
-            isUp: false,
-            icon: "fa-solid fa-headset",
-            iconType: "green",
-        },
-        {
-            label: "Tiempo Promedio de Respuesta",
-            value: "18 min",
-            trend: "-4 min que ayer",
-            isUp: true,
-            icon: "fa-solid fa-clock-rotate-left",
+            label: "Cuentas Suspendidas",
+            value: loading ? "..." : String(users.suspended ?? 0),
+            trend: `${users.active ?? 0} cuentas activas en MySQL`,
+            isUp: (users.suspended ?? 0) === 0,
+            icon: "fa-solid fa-user-lock",
             iconType: "blue",
         },
         {
-            label: "Reportes de Preguntas",
-            value: "5",
-            trend: "Revisión requerida",
-            isUp: false,
+            label: "Reactivos con Observaciones",
+            value: loading ? "..." : String(questions.with_warnings ?? 0),
+            trend: `${questions.by_status?.draft || 0} en borrador pendiente`,
+            isUp: (questions.with_warnings ?? 0) === 0,
             icon: "fa-solid fa-triangle-exclamation",
             iconType: "amber",
         },
         {
-            label: "Tasa de Resolución",
-            value: "96.4%",
-            trend: "Excelente desempeño",
+            label: "Documentos Fuente PDF",
+            value: loading
+                ? "..."
+                : `${supportOverview.documents_summary?.completed || 0}/${supportOverview.documents_summary?.total || 0}`,
+            trend:
+                (supportOverview.documents_summary?.failed || 0) > 0
+                    ? `${supportOverview.documents_summary.failed} con error de extracción`
+                    : "Sin fallos de extracción",
+            isUp: (supportOverview.documents_summary?.failed || 0) === 0,
+            icon: "fa-solid fa-file-pdf",
+            iconType: "green",
+        },
+        {
+            label: "Simulacros Registrados",
+            value: loading ? "..." : String(activity.total_exam_attempts ?? 0),
+            trend: `${activity.in_progress_exam_attempts || 0} en curso actualmente`,
             isUp: true,
             icon: "fa-solid fa-circle-check",
             iconType: "purple",
         },
     ];
 
-    const supportTickets = [
-        {
-            id: "TK-2041",
-            user: "Valentina Ríos",
-            subject: "Error al cargar gráfico en pregunta #112",
-            priority: "Alta",
-            status: "Abierto",
-            time: "Hace 12 min",
-        },
-        {
-            id: "TK-2040",
-            user: "Santiago Morales",
-            subject: "Duda con puntaje en Simulacro General",
-            priority: "Media",
-            status: "En Proceso",
-            time: "Hace 45 min",
-        },
-        {
-            id: "TK-2039",
-            user: "Camila Torres",
-            subject: "Solicitud de restablecimiento de contraseña",
-            priority: "Baja",
-            status: "Resuelto",
-            time: "Hace 2 horas",
-        },
-        {
-            id: "TK-2038",
-            user: "Juan Pablo Vargas",
-            subject: "No reproduce audio en módulo de Inglés",
-            priority: "Alta",
-            status: "En Proceso",
-            time: "Hace 3 horas",
-        },
-        {
-            id: "TK-2037",
-            user: "Mariana Restrepo",
-            subject: "Pregunta duplicada en simulacro rápido",
-            priority: "Media",
-            status: "Resuelto",
-            time: "Hace 5 horas",
-        },
-    ];
-
-    const reportedQuestions = [
-        { code: "LEC-089", reason: "Texto con tipografía cortada", reporter: "Valentina R.", date: "Hoy, 10:15 AM" },
-        { code: "MAT-042", reason: "Opción C y D tienen el mismo valor", reporter: "David G.", date: "Hoy, 09:30 AM" },
-        { code: "NAT-101", reason: "Imagen de la célula desactualizada", reporter: "Sebastián G.", date: "Ayer, 05:20 PM" },
-    ];
+    const accountsToShow =
+        (supportOverview.suspended_accounts || []).length > 0
+            ? supportOverview.suspended_accounts
+            : users.recent_users || [];
 
     return (
         <div className="adm-dashboard">
-            {/* Banner de Soporte Técnico */}
             <div className="adm-hero-card">
                 <div className="adm-hero-info">
                     <span className="adm-hero-badge">
-                        <i className="fa-solid fa-headset"></i> Mesa de Ayuda
+                        <i className="fa-solid fa-headset"></i> Diagnóstico y Soporte Operativo
                     </span>
-                    <h1>Panel de Soporte y Atención Técnica</h1>
+                    <h1>Panel de Soporte y Verificación</h1>
                     <p>
-                        Gestión de incidencias estudiantiles, atención de tickets y validación de reportes académicos.
+                        Monitoreo real de cuentas estudiantiles en MySQL, observaciones de auditoría del banco de preguntas y estado de cuadernillos en Supabase.
                     </p>
                 </div>
                 <div className="adm-hero-actions">
-                    <button className="adm-btn-secondary">
-                        <i className="fa-solid fa-flag"></i>
-                        <span>Ver Reportes</span>
+                    <button
+                        type="button"
+                        className="adm-btn-secondary"
+                        onClick={() => navigate("/admin/users")}
+                    >
+                        <i className="fa-solid fa-users"></i>
+                        <span>Directorio de Usuarios</span>
                     </button>
-                    <button className="adm-btn-primary">
-                        <i className="fa-solid fa-ticket"></i>
-                        <span>Nuevo Ticket</span>
+                    <button
+                        type="button"
+                        className="adm-btn-primary"
+                        onClick={loadSupportData}
+                    >
+                        <i className="fa-solid fa-arrows-rotate"></i>
+                        <span>Actualizar Estado</span>
                     </button>
                 </div>
             </div>
 
-            {/* Cuadrícula de Métricas Clave */}
+            {feedback && (
+                <div
+                    style={{
+                        padding: "12px 16px",
+                        borderRadius: "10px",
+                        background: "rgba(16, 185, 129, 0.14)",
+                        border: "1px solid rgba(16, 185, 129, 0.35)",
+                        color: "#6ee7b7",
+                        marginBottom: "16px",
+                    }}
+                >
+                    <i className="fa-solid fa-circle-check"></i> {feedback}
+                </div>
+            )}
+
+            {error && (
+                <div
+                    style={{
+                        padding: "12px 16px",
+                        borderRadius: "10px",
+                        background: "rgba(239, 68, 68, 0.14)",
+                        border: "1px solid rgba(239, 68, 68, 0.35)",
+                        color: "#fca5a5",
+                        marginBottom: "16px",
+                    }}
+                >
+                    <i className="fa-solid fa-triangle-exclamation"></i> {error}
+                </div>
+            )}
+
             <div className="adm-stats-grid">
                 {stats.map((stat, idx) => (
                     <div key={idx} className="adm-stat-card">
                         <div className="adm-stat-info">
                             <span className="adm-stat-label">{stat.label}</span>
                             <span className="adm-stat-value">{stat.value}</span>
-                            <span className={`adm-stat-trend ${stat.isUp ? "adm-stat-trend--up" : "adm-stat-trend--down"}`}>
-                                <i className={`fa-solid ${stat.isUp ? "fa-arrow-trend-up" : "fa-circle-exclamation"}`}></i>
+                            <span
+                                className={`adm-stat-trend ${
+                                    stat.isUp ? "adm-stat-trend--up" : "adm-stat-trend--down"
+                                }`}
+                            >
+                                <i
+                                    className={`fa-solid ${
+                                        stat.isUp ? "fa-circle-check" : "fa-circle-exclamation"
+                                    }`}
+                                ></i>
                                 {stat.trend}
                             </span>
                         </div>
@@ -129,16 +186,18 @@ const DashboardSupport = () => {
                 ))}
             </div>
 
-            {/* Grilla Principal de Tickets y Reportes */}
             <div className="adm-grid-2col">
-                {/* Tabla de Tickets de Soporte */}
                 <div className="adm-card">
                     <div className="adm-card-header">
                         <h2 className="adm-card-title">
-                            <i className="fa-solid fa-comments-dollar"></i>
-                            Tickets Recientes de Estudiantes
+                            <i className="fa-solid fa-user-shield"></i>
+                            {(supportOverview.suspended_accounts || []).length > 0
+                                ? "Cuentas Suspendidas que Requieren Atención"
+                                : "Últimas Cuentas Registradas en MySQL"}
                         </h2>
-                        <span className="adm-card-badge">Activos</span>
+                        <span className="adm-card-badge">
+                            {accountsToShow.length} registro(s)
+                        </span>
                     </div>
 
                     <div className="adm-table-wrap">
@@ -146,89 +205,154 @@ const DashboardSupport = () => {
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>Estudiante / Asunto</th>
-                                    <th>Prioridad</th>
+                                    <th>Usuario / Correo</th>
+                                    <th>Rol</th>
                                     <th>Estado</th>
-                                    <th>Tiempo</th>
+                                    <th>Acción</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {supportTickets.map((t, i) => (
-                                    <tr key={i}>
-                                        <td>
-                                            <span style={{ fontWeight: 700, color: "#38bdf8", fontSize: "0.78rem" }}>
-                                                {t.id}
-                                            </span>
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="5" style={{ textAlign: "center", padding: "24px", color: "#94a3b8" }}>
+                                            Consultando directorio en MySQL...
                                         </td>
-                                        <td>
-                                            <div style={{ fontWeight: 600, color: "#f8fafc" }}>{t.user}</div>
-                                            <div style={{ fontSize: "0.74rem", color: "#64748b" }}>{t.subject}</div>
-                                        </td>
-                                        <td>
-                                            <span
-                                                className={`adm-badge ${
-                                                    t.priority === "Alta"
-                                                        ? "adm-badge--danger"
-                                                        : t.priority === "Media"
-                                                        ? "adm-badge--warning"
-                                                        : "adm-badge--info"
-                                                }`}
-                                            >
-                                                {t.priority}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span
-                                                className={`adm-badge ${
-                                                    t.status === "Resuelto"
-                                                        ? "adm-badge--success"
-                                                        : t.status === "En Proceso"
-                                                        ? "adm-badge--info"
-                                                        : "adm-badge--warning"
-                                                }`}
-                                            >
-                                                {t.status}
-                                            </span>
-                                        </td>
-                                        <td style={{ fontSize: "0.76rem", color: "#94a3b8" }}>{t.time}</td>
                                     </tr>
-                                ))}
+                                ) : accountsToShow.length > 0 ? (
+                                    accountsToShow.map((u) => (
+                                        <tr key={u.id}>
+                                            <td>
+                                                <span style={{ fontWeight: 700, color: "#38bdf8", fontSize: "0.78rem" }}>
+                                                    #{u.id}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div style={{ fontWeight: 600, color: "#f8fafc" }}>{u.full_name}</div>
+                                                <div style={{ fontSize: "0.74rem", color: "#64748b" }}>{u.email}</div>
+                                            </td>
+                                            <td>
+                                                <span className="adm-badge adm-badge--info">{u.role}</span>
+                                            </td>
+                                            <td>
+                                                <span
+                                                    className={`adm-badge ${
+                                                        u.status === "Activo"
+                                                            ? "adm-badge--success"
+                                                            : "adm-badge--danger"
+                                                    }`}
+                                                >
+                                                    {u.status}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {u.status === "Suspendido" && canManageUsers ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleReactivateUser(u)}
+                                                        style={{
+                                                            padding: "4px 10px",
+                                                            borderRadius: "6px",
+                                                            border: "1px solid rgba(16,185,129,0.4)",
+                                                            background: "rgba(16,185,129,0.15)",
+                                                            color: "#34d399",
+                                                            fontSize: "0.75rem",
+                                                            cursor: "pointer",
+                                                        }}
+                                                    >
+                                                        Reactivar
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            navigate(
+                                                                `/admin/users?search=${encodeURIComponent(u.email)}`
+                                                            )
+                                                        }
+                                                        style={{
+                                                            padding: "4px 10px",
+                                                            borderRadius: "6px",
+                                                            border: "1px solid rgba(148,163,184,0.25)",
+                                                            background: "rgba(30,41,59,0.6)",
+                                                            color: "#cbd5e1",
+                                                            fontSize: "0.75rem",
+                                                            cursor: "pointer",
+                                                        }}
+                                                    >
+                                                        Ver ficha
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="5" style={{ textAlign: "center", padding: "24px", color: "#94a3b8" }}>
+                                            No hay cuentas registradas.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                {/* Reportes de Preguntas y Acciones Rápidas */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                     <div className="adm-card">
                         <div className="adm-card-header">
                             <h2 className="adm-card-title">
                                 <i className="fa-solid fa-triangle-exclamation"></i>
-                                Reportes de Preguntas ICFES
+                                Preguntas con Advertencias de Auditoría
                             </h2>
-                            <span className="adm-card-badge">3 Pendientes</span>
+                            <span className="adm-card-badge">
+                                {(supportOverview.questions_with_warnings || []).length} en lista
+                            </span>
                         </div>
                         <div className="adm-feed-list">
-                            {reportedQuestions.map((q, idx) => (
-                                <div key={idx} className="adm-feed-item">
+                            {(supportOverview.questions_with_warnings || []).length > 0 ? (
+                                supportOverview.questions_with_warnings.slice(0, 5).map((q) => (
                                     <div
-                                        className="adm-feed-icon"
-                                        style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}
+                                        key={q.id}
+                                        className="adm-feed-item"
+                                        style={{ cursor: "pointer" }}
+                                        onClick={() => navigate("/admin/questions")}
                                     >
-                                        <i className="fa-solid fa-flag"></i>
-                                    </div>
-                                    <div className="adm-feed-body">
-                                        <div className="adm-feed-title" style={{ display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ color: "#22c55e" }}>{q.code}</span>
-                                            <span style={{ fontSize: "0.7rem", color: "#64748b" }}>{q.date}</span>
+                                        <div
+                                            className="adm-feed-icon"
+                                            style={{
+                                                backgroundColor: "rgba(245, 158, 11, 0.15)",
+                                                color: "#f59e0b",
+                                            }}
+                                        >
+                                            <i className="fa-solid fa-flag"></i>
                                         </div>
-                                        <div style={{ fontSize: "0.76rem", color: "#cbd5e1" }}>{q.reason}</div>
-                                        <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "2px" }}>
-                                            Reportado por: {q.reporter}
+                                        <div className="adm-feed-body">
+                                            <div
+                                                className="adm-feed-title"
+                                                style={{
+                                                    display: "flex",
+                                                    justifyContent: "space-between",
+                                                }}
+                                            >
+                                                <span style={{ color: "#22c55e" }}>
+                                                    {q.subject_name} (#{q.order_in_group || String(q.id).slice(0, 6)})
+                                                </span>
+                                                <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
+                                                    {q.status}
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: "0.76rem", color: "#cbd5e1" }}>
+                                                {q.extraction_warnings ||
+                                                    `Clave en estado: ${q.key_status}`}
+                                            </div>
                                         </div>
                                     </div>
+                                ))
+                            ) : (
+                                <div style={{ padding: "16px", color: "#94a3b8", fontSize: "0.85rem" }}>
+                                    Todas las preguntas actuales tienen clave verificada y sin advertencias de extracción.
                                 </div>
-                            ))}
+                            )}
                         </div>
                     </div>
 
@@ -236,29 +360,45 @@ const DashboardSupport = () => {
                         <div className="adm-card-header">
                             <h2 className="adm-card-title">
                                 <i className="fa-solid fa-wrench"></i>
-                                Herramientas de Asistencia
+                                Accesos de Asistencia Técnica
                             </h2>
                         </div>
                         <div className="adm-quick-actions">
-                            <button className="adm-quick-btn">
-                                <i className="fa-solid fa-key"></i>
-                                <span className="adm-quick-btn-title">Desbloquear Cuenta</span>
-                                <span className="adm-quick-btn-desc">Reactivar estudiante</span>
+                            <button
+                                type="button"
+                                className="adm-quick-btn"
+                                onClick={() => navigate("/admin/users?status=Suspendido")}
+                            >
+                                <i className="fa-solid fa-user-check"></i>
+                                <span className="adm-quick-btn-title">Cuentas Suspendidas</span>
+                                <span className="adm-quick-btn-desc">Filtrar y reactivar acceso</span>
                             </button>
-                            <button className="adm-quick-btn">
-                                <i className="fa-solid fa-envelope-circle-check"></i>
-                                <span className="adm-quick-btn-title">Reenviar Acceso</span>
-                                <span className="adm-quick-btn-desc">Correo de credenciales</span>
+                            <button
+                                type="button"
+                                className="adm-quick-btn"
+                                onClick={() => navigate("/admin/questions")}
+                            >
+                                <i className="fa-solid fa-clipboard-check"></i>
+                                <span className="adm-quick-btn-title">Bandeja de Revisión</span>
+                                <span className="adm-quick-btn-desc">Inspeccionar reactivos</span>
                             </button>
-                            <button className="adm-quick-btn">
-                                <i className="fa-solid fa-circle-question"></i>
-                                <span className="adm-quick-btn-title">FAQ de Soporte</span>
-                                <span className="adm-quick-btn-desc">Base de conocimiento</span>
+                            <button
+                                type="button"
+                                className="adm-quick-btn"
+                                onClick={() => navigate("/admin/subjects")}
+                            >
+                                <i className="fa-solid fa-book-bookmark"></i>
+                                <span className="adm-quick-btn-title">Catálogo ICFES</span>
+                                <span className="adm-quick-btn-desc">Verificar áreas y temas</span>
                             </button>
-                            <button className="adm-quick-btn">
-                                <i className="fa-solid fa-bullhorn"></i>
-                                <span className="adm-quick-btn-title">Alerta de Mantenimiento</span>
-                                <span className="adm-quick-btn-desc">Programar aviso</span>
+                            <button
+                                type="button"
+                                className="adm-quick-btn"
+                                onClick={() => navigate("/admin/exams")}
+                            >
+                                <i className="fa-solid fa-file-signature"></i>
+                                <span className="adm-quick-btn-title">Estado de Simulacros</span>
+                                <span className="adm-quick-btn-desc">Ver intentos de estudiantes</span>
                             </button>
                         </div>
                     </div>

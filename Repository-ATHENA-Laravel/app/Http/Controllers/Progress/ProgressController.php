@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Progress;
 
 use App\Http\Controllers\Controller;
 use App\Services\ProgressService;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
@@ -18,11 +19,19 @@ class ProgressController extends Controller
     }
 
     /**
-     * Obtiene el ID del usuario activo o utiliza 1 como fallback si no hay sesión iniciada.
+     * Obtiene el ID del usuario autenticado mediante Sanctum sin fallback a usuario fijo.
+     *
+     * @throws AuthenticationException
      */
     protected function getUserId(): int
     {
-        return Auth::id() ?? 1;
+        $userId = Auth::guard('sanctum')->id() ?? Auth::id();
+
+        if ($userId === null) {
+            throw new AuthenticationException('No autenticado.');
+        }
+
+        return (int) $userId;
     }
 
     /**
@@ -31,8 +40,10 @@ class ProgressController extends Controller
      */
     public function dashboard(): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->progressService->getDashboardOverview($this->getUserId());
+            $data = $this->progressService->getDashboardOverview($userId);
 
             return response()->json([
                 'success' => true,
@@ -54,8 +65,10 @@ class ProgressController extends Controller
      */
     public function history(): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->progressService->getHistory($this->getUserId());
+            $data = $this->progressService->getHistory($userId);
 
             return response()->json([
                 'success' => true,
@@ -77,8 +90,10 @@ class ProgressController extends Controller
      */
     public function stats(): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->progressService->getGeneralStats($this->getUserId());
+            $data = $this->progressService->getGeneralStats($userId);
 
             return response()->json([
                 'success' => true,
@@ -100,8 +115,10 @@ class ProgressController extends Controller
      */
     public function performanceBySubject($subjectId): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->progressService->getSubjectPerformance($this->getUserId(), (int) $subjectId);
+            $data = $this->progressService->getSubjectPerformance($userId, (int) $subjectId);
 
             return response()->json([
                 'success' => true,
@@ -123,8 +140,10 @@ class ProgressController extends Controller
      */
     public function performanceByTopic($topicId): JsonResponse
     {
+        $userId = $this->getUserId();
+
         try {
-            $data = $this->progressService->getTopicPerformance($this->getUserId(), (int) $topicId);
+            $data = $this->progressService->getTopicPerformance($userId, (int) $topicId);
 
             return response()->json([
                 'success' => true,

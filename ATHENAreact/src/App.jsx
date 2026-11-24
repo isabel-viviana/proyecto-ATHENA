@@ -165,8 +165,8 @@ function App() {
                     />
                     <Route path="/analysis" element={<Analysis />} />
                     <Route path="/store" element={<Store />} />
-                    <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/suscripciones" element={<Subscriptions />} />
+                    <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/payments" element={<Payments />} />
                 </Route>
 

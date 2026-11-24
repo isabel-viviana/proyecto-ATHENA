@@ -1,71 +1,58 @@
-import { useEffect, useState } from "react";
-import { Outlet, Link } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
 
 const MockLayout = () => {
-    const [timerSeconds, setTimerSeconds] = useState(0);
-    const [timerRunning, setTimerRunning] = useState(false);
+    const location = useLocation();
+    const isTakingExam = location.pathname.startsWith("/mock/exam");
 
-    useEffect(() => {
-        /* importante: el intervalo se crea/destruye segun timerRunning
-        asi evitamos acumulacion de timers y drift en UI */
-        let interval;
-        if (timerRunning) {
-            interval = setInterval(() => {
-                setTimerSeconds((s) => s + 1);
-            }, 1000);
-        }
-        return () => clearInterval(interval);
-    }, [timerRunning]);
-
-    const startTimer = () => setTimerRunning(true);
-    const stopTimer = () => setTimerRunning(false);
-    const resetTimer = () => {
-        setTimerSeconds(0);
-        setTimerRunning(false);
+    const navItemStyle = (path) => {
+        const active =
+            location.pathname === path ||
+            (path === "/mock/config" && location.pathname === "/mock");
+        return {
+            padding: "8px 14px",
+            borderRadius: "8px",
+            textDecoration: "none",
+            fontSize: "13px",
+            fontWeight: 600,
+            background: active ? "rgba(2, 132, 199, 0.25)" : "transparent",
+            border: active
+                ? "1px solid rgba(56, 189, 248, 0.45)"
+                : "1px solid transparent",
+            color: active ? "#38bdf8" : "#94a3b8",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            transition: "all 0.15s ease",
+        };
     };
 
     return (
         <div className="mock-layout">
-            <header
-                className="mock-header"
-                style={{
-                    display: "flex",
-                    gap: 12,
-                    alignItems: "center",
-                    marginBottom: 16,
-                }}
-            >
-                <nav style={{ display: "flex", gap: 8 }}>
-                    <Link to="/mock/config">Config</Link>
-                    <Link to="/mock/quick">Rápido</Link>
-                    <Link to="/mock/exam">Exam</Link>
-                    <Link to="/mock/result">Resultados</Link>
-                    <Link to="/mock/history">Historial</Link>
-                </nav>
-
-                <div
+            {!isTakingExam && (
+                <header
+                    className="mock-header"
                     style={{
-                        marginLeft: "auto",
                         display: "flex",
-                        gap: 8,
+                        gap: 12,
                         alignItems: "center",
+                        padding: "14px 24px 0",
+                        maxWidth: "1000px",
+                        margin: "0 auto",
                     }}
                 >
-                    <small>
-                        Timer: {Math.floor(timerSeconds / 60)}:
-                        {String(timerSeconds % 60).padStart(2, "0")}
-                    </small>
-                    <button type="button" onClick={startTimer}>
-                        Start
-                    </button>
-                    <button type="button" onClick={stopTimer}>
-                        Stop
-                    </button>
-                    <button type="button" onClick={resetTimer}>
-                        Reset
-                    </button>
-                </div>
-            </header>
+                    <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Link to="/mock/config" style={navItemStyle("/mock/config")}>
+                            <i className="fas fa-sliders"></i> Configurar Simulacro
+                        </Link>
+                        <Link to="/mock/quick" style={navItemStyle("/mock/quick")}>
+                            <i className="fas fa-bolt"></i> Mini Simulacro Rápido
+                        </Link>
+                        <Link to="/mock/history" style={navItemStyle("/mock/history")}>
+                            <i className="fas fa-clock-rotate-left"></i> Historial
+                        </Link>
+                    </nav>
+                </header>
+            )}
 
             <Outlet />
         </div>
