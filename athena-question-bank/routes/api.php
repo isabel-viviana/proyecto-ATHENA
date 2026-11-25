@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\Student\StudentQuestionController;
 use App\Http\Controllers\Api\V1\Student\StudentAuthController;
 use App\Http\Controllers\Api\V1\Student\StudentProfileController;
 use App\Http\Controllers\Api\V1\Student\StudentRankingController;
+use App\Http\Controllers\Api\V1\Student\StudentAchievementController;
 use App\Http\Controllers\Api\V1\Student\StudentNotificationController;
 use App\Http\Controllers\Api\V1\Student\StudentExamController;
 
@@ -158,6 +159,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/', [StudentRankingController::class, 'index']);
             Route::get('/me', [StudentRankingController::class, 'me']);
         });
+
+        // Logros académicos reales del estudiante
+        Route::get('/achievements', [StudentAchievementController::class, 'index']);
 
         // Bandeja de notificaciones del estudiante
         Route::prefix('notifications')->group(function () {

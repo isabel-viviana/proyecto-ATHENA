@@ -2,13 +2,16 @@ import "./profile.css";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useAuthStore } from "../../stores/useAuthStore";
-import { getStudentProfileData } from "../../api/studentQuestions";
+import { getStudentProfileData, getStudentAchievements } from "../../api/studentQuestions";
+import { fetchWompiHistory } from "../../services/wompiService";
 
 const Profile = () => {
     const navigate = useNavigate();
     const user = useAuthStore((state) => state.user);
     const logout = useAuthStore((state) => state.logout);
     const [profile, setProfile] = useState(null);
+    const [achievementsSummary, setAchievementsSummary] = useState(null);
+    const [activeSubscription, setActiveSubscription] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -16,13 +19,26 @@ const Profile = () => {
         const fetchProfile = async () => {
             try {
                 setLoading(true);
-                const res = await getStudentProfileData();
-                if (res && res.success && res.data) {
-                    setProfile(res.data);
+                const [res, achRes, subRes] = await Promise.allSettled([
+                    getStudentProfileData(),
+                    getStudentAchievements(),
+                    fetchWompiHistory(),
+                ]);
+
+                if (res.status === "fulfilled" && res.value?.success && res.value?.data) {
+                    setProfile(res.value.data);
                 } else if (user) {
                     setProfile(user);
                 } else {
-                    setError(res?.message || "No se pudo obtener el perfil.");
+                    setError(res.value?.message || "No se pudo obtener el perfil.");
+                }
+
+                if (achRes.status === "fulfilled" && achRes.value?.success && achRes.value?.data?.summary) {
+                    setAchievementsSummary(achRes.value.data.summary);
+                }
+
+                if (subRes.status === "fulfilled" && subRes.value?.active_subscription) {
+                    setActiveSubscription(subRes.value.active_subscription);
                 }
             } catch (err) {
                 if (user) {
@@ -217,6 +233,24 @@ const Profile = () => {
 
             {/* ACCOUNT GRID */}
             <section className="account-grid">
+                <Link to="/profile/achievements">
+                    <article className="action-card">
+                        <div className="action-card__icon blue-bg">
+                            <i className="fas fa-award"></i>
+                        </div>
+                        <div className="action-card__content">
+                            <h3>Mis Logros</h3>
+                            <p>Descubre tus medallas y reconocimientos académicos desbloqueados.</p>
+                            <span className="action-card__badge blue">
+                                {achievementsSummary
+                                    ? `${achievementsSummary.unlocked_count} / ${achievementsSummary.total_count} desbloqueados`
+                                    : "Ver medallas"}
+                            </span>
+                        </div>
+                        <i className="fas fa-chevron-right action-card__arrow"></i>
+                    </article>
+                </Link>
+
                 <Link to="/statistics">
                     <article className="action-card">
                         <div className="action-card__icon purple-bg">
@@ -233,16 +267,18 @@ const Profile = () => {
                     </article>
                 </Link>
 
-                <Link to="/ranking">
+                <Link to="/suscripciones">
                     <article className="action-card">
                         <div className="action-card__icon pink-bg">
-                            <i className="fas fa-trophy"></i>
+                            <i className="fas fa-crown"></i>
                         </div>
                         <div className="action-card__content">
-                            <h3>Ranking Institucional</h3>
-                            <p>Consulta tu posición en la tabla general de líderes.</p>
+                            <h3>Planes y Suscripciones</h3>
+                            <p>Gestiona tu plan ATHENA Premium y pagos con Wompi.</p>
                             <span className="action-card__badge pink">
-                                Clasificación oficial
+                                {activeSubscription
+                                    ? `Plan Activo: ${activeSubscription.plan_name || "Premium"}`
+                                    : "Wompi / Premium"}
                             </span>
                         </div>
                         <i className="fas fa-chevron-right action-card__arrow"></i>

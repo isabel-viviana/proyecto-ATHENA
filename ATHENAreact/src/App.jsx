@@ -44,10 +44,10 @@ import PracticesFull from "./pages/practices/practice_full";
 import PracticesResult from "./pages/practices/practice_results";
 import PracticeReview from "./pages/practices/practice_review";
 import Profiles from "./pages/profiles/profile";
+import ProfileAchievements from "./pages/profiles/profile_achievements";
 import ProfileEdit from "./pages/profiles/profile_edit";
 import Ranking from "./pages/ranking/ranking";
 import Statistics from "./pages/statistics/statistics";
-import Analysis from "./pages/statistics/analysis";
 import Subscriptions from "./pages/subscriptions/subscription";
 import Notificaciones from "./pages/profiles/profile_notifications";
 import ForgotPassword from "./pages/authentications/forgot_password";
@@ -156,6 +156,7 @@ function App() {
                     <Route path="/profile" element={<ProfileLayout />}>
                         <Route index element={<Profiles />} />
                         <Route path="edit" element={<ProfileEdit />} />
+                        <Route path="achievements" element={<ProfileAchievements />} />
                         <Route path="notifications" element={<Notificaciones />} />
                     </Route>
 
@@ -165,7 +166,6 @@ function App() {
                         path="/notifications"
                         element={<Navigate to="/profile/notifications" replace />}
                     />
-                    <Route path="/analysis" element={<Analysis />} />
                     <Route path="/suscripciones" element={<Subscriptions />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/payments" element={<Payments />} />

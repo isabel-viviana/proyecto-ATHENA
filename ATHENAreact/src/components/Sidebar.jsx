@@ -91,27 +91,11 @@ const Sidebar = () => {
                 </Link>
 
                 <Link
-                    to="/analysis"
-                    className={`sidebar__link ${isActive("/analysis")}`}
-                >
-                    <i className="fas fa-stethoscope"></i>
-                    <span>Diagnóstico</span>
-                </Link>
-
-                <Link
                     to="/ranking"
                     className={`sidebar__link ${isActive("/ranking")}`}
                 >
                     <i className="fas fa-trophy"></i>
                     <span>Ranking</span>
-                </Link>
-
-                <Link
-                    to="/suscripciones"
-                    className={`sidebar__link ${isActive("/suscripciones") || isActive("/subscriptions") || isActive("/payments")}`}
-                >
-                    <i className="fas fa-crown"></i>
-                    <span>Suscripciones</span>
                 </Link>
 
                 <Link

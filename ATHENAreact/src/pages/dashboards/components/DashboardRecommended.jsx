@@ -97,7 +97,7 @@ const DashboardRecommended = () => {
                 </Link>
 
                 {totalRespondidas > 0 ? (
-                    <Link to={temaDebil || areaPorReforzar ? practiceUrl : "/analysis"} className="btn-link">
+                    <Link to={temaDebil || areaPorReforzar ? practiceUrl : "/statistics"} className="btn-link">
                         <button
                             type="button"
                             className="btn-cta"
@@ -107,7 +107,7 @@ const DashboardRecommended = () => {
                                 color: "#93c5fd",
                             }}
                         >
-                            {temaDebil || areaPorReforzar ? "Practicar Área" : "Ver Diagnóstico"}
+                            {temaDebil || areaPorReforzar ? "Practicar Área" : "Ver Estadísticas"}
                         </button>
                     </Link>
                 ) : (

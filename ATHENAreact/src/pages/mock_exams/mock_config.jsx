@@ -4,11 +4,118 @@ import { useNavigate, Link } from "react-router-dom";
 import Zorrito from "../../assets/images/Zorrito2D.png";
 import { startExam, getActiveExam, getExamConfigOptions } from "../../api/exams";
 
+const ICFES_SESSIONS_STRUCTURE = [
+    {
+        sessionId: "s1",
+        title: "Primera sesión (mañana — 143 preguntas)",
+        icon: "fa-sun",
+        items: [
+            {
+                key: "s1-matematicas",
+                order: 1,
+                name: "Matemáticas",
+                subtitle: "25 preguntas",
+                matchKey: "matematicas",
+                defaultSubjectId: 2,
+                sessionLabel: "Primera sesión (Mañana)",
+            },
+            {
+                key: "s1-lectura-critica",
+                order: 2,
+                name: "Lectura Crítica",
+                subtitle: "41 preguntas — se evalúa completa aquí",
+                matchKey: "lectura",
+                defaultSubjectId: 1,
+                sessionLabel: "Primera sesión (Mañana)",
+            },
+            {
+                key: "s1-sociales",
+                order: 3,
+                name: "Sociales y Ciudadanas",
+                subtitle: "25 preguntas",
+                matchKey: "sociales",
+                defaultSubjectId: 3,
+                sessionLabel: "Primera sesión (Mañana)",
+            },
+            {
+                key: "s1-ciencias",
+                order: 4,
+                name: "Ciencias Naturales",
+                subtitle: "29 preguntas",
+                matchKey: "ciencias",
+                defaultSubjectId: 4,
+                sessionLabel: "Primera sesión (Mañana)",
+            },
+            {
+                key: "s1-auxiliares",
+                order: 5,
+                name: "Cuestionarios auxiliares",
+                subtitle: "11 socioeconómico + 12 clima escolar",
+                matchKey: null,
+                defaultSubjectId: null,
+                isAuxiliary: true,
+                auxiliaryBadge: "No calificable",
+                sessionLabel: "Primera sesión (Mañana)",
+            },
+        ],
+    },
+    {
+        sessionId: "s2",
+        title: "Segunda sesión (tarde — 159 preguntas)",
+        icon: "fa-clock",
+        items: [
+            {
+                key: "s2-sociales",
+                order: 1,
+                name: "Sociales y Ciudadanas",
+                subtitle: "25 preguntas",
+                matchKey: "sociales",
+                defaultSubjectId: 3,
+                sessionLabel: "Segunda sesión (Tarde)",
+            },
+            {
+                key: "s2-matematicas",
+                order: 2,
+                name: "Matemáticas",
+                subtitle: "25 preguntas",
+                matchKey: "matematicas",
+                defaultSubjectId: 2,
+                sessionLabel: "Segunda sesión (Tarde)",
+            },
+            {
+                key: "s2-ciencias",
+                order: 3,
+                name: "Ciencias Naturales",
+                subtitle: "29 preguntas",
+                matchKey: "ciencias",
+                defaultSubjectId: 4,
+                sessionLabel: "Segunda sesión (Tarde)",
+            },
+            {
+                key: "s2-ingles",
+                order: 4,
+                name: "Inglés",
+                subtitle: "55 preguntas — se evalúa completa aquí",
+                matchKey: "ingles",
+                defaultSubjectId: 5,
+                sessionLabel: "Segunda sesión (Tarde)",
+            },
+        ],
+    },
+];
+
+const normalizeText = (text = "") =>
+    String(text)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
 const MockConfig = () => {
     const navigate = useNavigate();
 
     // Modalidad: 'area' (por área) o 'custom' (personalizado)
     const [mode, setMode] = useState("area");
+    const [selectedItemKey, setSelectedItemKey] = useState("s1-lectura-critica");
     const [selectedSubjectId, setSelectedSubjectId] = useState(1); // 1 = Lectura Crítica
     const [questionsCount, setQuestionsCount] = useState(49);
     const [durationMinutes, setDurationMinutes] = useState(98);
@@ -28,6 +135,17 @@ const MockConfig = () => {
         49: 98,
     };
 
+    const resolveBackendArea = (item, areasList = areas) => {
+        if (!item || item.isAuxiliary || !item.matchKey) return null;
+        return (
+            areasList.find((a) => {
+                const normName = normalizeText(a.name);
+                const normCode = normalizeText(a.code);
+                return normName.includes(item.matchKey) || normCode.includes(item.matchKey);
+            }) || null
+        );
+    };
+
     useEffect(() => {
         const loadInitialData = async () => {
             try {
@@ -41,7 +159,31 @@ const MockConfig = () => {
                 // 2. Cargar opciones del catálogo
                 const configRes = await getExamConfigOptions();
                 if (configRes && configRes.success && configRes.data) {
-                    setAreas(configRes.data.areas || []);
+                    const loadedAreas = configRes.data.areas || [];
+                    setAreas(loadedAreas);
+
+                    // Sincronizar la selección por defecto con la primera área disponible (Lectura Crítica)
+                    const lecturaBackend = loadedAreas.find((a) =>
+                        normalizeText(a.name).includes("lectura")
+                    );
+                    if (lecturaBackend && lecturaBackend.available) {
+                        setSelectedItemKey("s1-lectura-critica");
+                        setSelectedSubjectId(lecturaBackend.id);
+                    } else {
+                        for (const session of ICFES_SESSIONS_STRUCTURE) {
+                            let found = false;
+                            for (const item of session.items) {
+                                const matched = resolveBackendArea(item, loadedAreas);
+                                if (matched && matched.available) {
+                                    setSelectedItemKey(item.key);
+                                    setSelectedSubjectId(matched.id);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (found) break;
+                        }
+                    }
                 }
             } catch (err) {
                 console.error("Error al cargar configuración:", err);
@@ -248,50 +390,96 @@ const MockConfig = () => {
                             </div>
                         </label>
 
-                        {/* SELECCIÓN DE ÁREA OFICIAL */}
-                        <div style={{ marginTop: "24px" }}>
-                            <h4 style={{ color: "#f8fafc", fontSize: "14px", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        {/* SELECCIÓN DE ÁREA OFICIAL POR SESIONES SABER 11 */}
+                        <div className="icfes-area-section">
+                            <h4 className="icfes-area-section__title">
                                 2. Área de Evaluación
                             </h4>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
-                                {areas.map((a) => {
-                                    const isAvailable = a.available;
-                                    const isSelected = selectedSubjectId === a.id;
-                                    return (
-                                        <div
-                                            key={a.id}
-                                            onClick={() => isAvailable && setSelectedSubjectId(a.id)}
-                                            style={{
-                                                padding: "12px 16px",
-                                                borderRadius: "10px",
-                                                background: isSelected ? "rgba(2, 132, 199, 0.2)" : "rgba(15, 23, 42, 0.6)",
-                                                border: isSelected ? "1px solid #38bdf8" : "1px solid rgba(148, 163, 184, 0.15)",
-                                                cursor: isAvailable ? "pointer" : "not-allowed",
-                                                opacity: isAvailable ? 1 : 0.5,
-                                                display: "flex",
-                                                justifyContent: "space-between",
-                                                alignItems: "center",
-                                            }}
-                                        >
-                                            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                                                <i className={`fas ${isSelected ? "fa-circle-dot" : "fa-circle"}`} style={{ color: isSelected ? "#38bdf8" : "#64748b" }}></i>
-                                                <span style={{ color: isSelected ? "#38bdf8" : "#f8fafc", fontWeight: 600, fontSize: "14px" }}>
-                                                    {a.name}
-                                                </span>
-                                            </div>
-                                            <span style={{
-                                                fontSize: "11px",
-                                                padding: "3px 8px",
-                                                borderRadius: "6px",
-                                                background: isAvailable ? "rgba(34, 197, 94, 0.15)" : "rgba(148, 163, 184, 0.1)",
-                                                color: isAvailable ? "#4ade80" : "#94a3b8",
-                                                fontWeight: 600,
-                                            }}>
-                                                {isAvailable ? `${a.published_count} Reactivos` : "Próximamente"}
-                                            </span>
+
+                            <div className="icfes-sessions-container">
+                                {ICFES_SESSIONS_STRUCTURE.map((session) => (
+                                    <div key={session.sessionId} className="icfes-session-block">
+                                        <div className="icfes-session-block__header">
+                                            <i className={`fas ${session.icon}`}></i>
+                                            <span>{session.title}</span>
                                         </div>
-                                    );
-                                })}
+
+                                        <div className="icfes-session-block__list">
+                                            {session.items.map((item) => {
+                                                const backendArea = resolveBackendArea(item);
+                                                const isAvailable =
+                                                    !item.isAuxiliary &&
+                                                    (backendArea
+                                                        ? Boolean(backendArea.available)
+                                                        : item.matchKey === "lectura");
+                                                const publishedCount = backendArea
+                                                    ? backendArea.published_count
+                                                    : item.matchKey === "lectura"
+                                                    ? 49
+                                                    : 0;
+                                                const targetSubjectId = backendArea
+                                                    ? backendArea.id
+                                                    : item.defaultSubjectId;
+                                                const isSelected =
+                                                    isAvailable && selectedItemKey === item.key;
+
+                                                return (
+                                                    <div
+                                                        key={item.key}
+                                                        onClick={() => {
+                                                            if (isAvailable && targetSubjectId) {
+                                                                setSelectedItemKey(item.key);
+                                                                setSelectedSubjectId(targetSubjectId);
+                                                            }
+                                                        }}
+                                                        className={`icfes-area-item ${
+                                                            isSelected ? "icfes-area-item--selected" : ""
+                                                        } ${
+                                                            !isAvailable ? "icfes-area-item--disabled" : ""
+                                                        }`}
+                                                    >
+                                                        <div className="icfes-area-item__left">
+                                                            <i
+                                                                className={`fas ${
+                                                                    isSelected
+                                                                        ? "fa-circle-dot"
+                                                                        : "fa-circle"
+                                                                } icfes-area-item__radio`}
+                                                            ></i>
+                                                            <span className="icfes-area-item__order">
+                                                                {item.order}.
+                                                            </span>
+                                                            <div className="icfes-area-item__texts">
+                                                                <span className="icfes-area-item__name">
+                                                                    {item.name}
+                                                                </span>
+                                                                <span className="icfes-area-item__subtitle">
+                                                                    {item.subtitle}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <span
+                                                            className={`icfes-area-item__badge ${
+                                                                isAvailable
+                                                                    ? "icfes-area-item__badge--available"
+                                                                    : item.isAuxiliary
+                                                                    ? "icfes-area-item__badge--auxiliary"
+                                                                    : "icfes-area-item__badge--upcoming"
+                                                            }`}
+                                                        >
+                                                            {isAvailable
+                                                                ? `${publishedCount} Reactivos`
+                                                                : item.isAuxiliary
+                                                                ? item.auxiliaryBadge
+                                                                : "Próximamente"}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -372,10 +560,28 @@ const MockConfig = () => {
                                 Resumen del Simulacro
                             </h4>
                             <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                    <span style={{ color: "#94a3b8" }}>Materia:</span>
-                                    <strong style={{ color: "#f8fafc" }}>Lectura Crítica Saber 11</strong>
-                                </div>
+                                {(() => {
+                                    const activeItem =
+                                        ICFES_SESSIONS_STRUCTURE.flatMap((s) => s.items).find(
+                                            (i) => i.key === selectedItemKey
+                                        ) || ICFES_SESSIONS_STRUCTURE[0].items[1];
+                                    return (
+                                        <>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ color: "#94a3b8" }}>Materia:</span>
+                                                <strong style={{ color: "#f8fafc" }}>
+                                                    {activeItem.name} Saber 11
+                                                </strong>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                <span style={{ color: "#94a3b8" }}>Sesión Oficial:</span>
+                                                <span style={{ color: "#cbd5e1", fontWeight: 600 }}>
+                                                    {activeItem.sessionLabel}
+                                                </span>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                                     <span style={{ color: "#94a3b8" }}>Total de Reactivos:</span>
                                     <strong style={{ color: "#38bdf8" }}>{questionsCount} preguntas</strong>

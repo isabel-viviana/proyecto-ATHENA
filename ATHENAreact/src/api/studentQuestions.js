@@ -102,6 +102,14 @@ export const getMyRanking = async () => {
 };
 
 /**
+ * Consulta los logros académicos del estudiante evaluados dinámicamente con su actividad real.
+ */
+export const getStudentAchievements = async () => {
+    const res = await questionBankApi.get('/student/achievements');
+    return res.data;
+};
+
+/**
  * Consulta las notificaciones institucionales del estudiante.
  * Filtro opcional: 'all', 'unread', 'read'.
  */

@@ -15,7 +15,7 @@ const DEFAULT_FEATURES_BY_KEY = {
     monthly: [
         "Simulacros ilimitados Saber 11 en todas las áreas",
         "Tutor IA ATHENA 24/7 con explicaciones paso a paso",
-        "Diagnóstico y analítica detallada por competencias",
+        "Estadísticas y analítica detallada por competencias",
         "Banco oficial de preguntas contextualizadas ICFES",
     ],
     quarterly: [
