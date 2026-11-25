@@ -1,6 +1,6 @@
 # ATHENA — PLATAFORMA DE PREPARACIÓN PARA LAS PRUEBAS SABER 11
 ## DOCUMENTACIÓN MAESTRA DEL PROYECTO
-**Versión 1.1 — Versión Oficial Consolidada (Microservicios, Docker, RBAC 3 Roles & Pasarela Wompi)**  
+**Versión 1.2 — Versión Oficial Consolidada (Microservicios, Docker, RBAC 3 Roles, Wompi & Limpieza General)**  
 **Servicio Nacional de Aprendizaje – SENA**  
 **Centro de Comercio y Servicios · Regional Cauca**  
 **Ficha:** 3223898  
@@ -22,11 +22,11 @@
 | Campo | Detalle |
 | :--- | :--- |
 | **Nombre** | Documentación Maestra del Proyecto ATHENA |
-| **Versión** | 1.1 – Consolidada y Sincronizada frente al Código Fuente Real (Rama `Hotfix`) |
+| **Versión** | 1.2 – Consolidada y Sincronizada frente al Código Fuente Real (Rama `Hotfix`) |
 | **Estado** | Aprobada para desarrollo, auditoría QA y despliegue contenerizado |
 | **Responsables** | Equipo de desarrollo ATHENA – Ficha 3223898 |
 | **Institución** | SENA – Regional Cauca (Centro de Comercio y Servicios) |
-| **Propósito** | Documentar con precisión la arquitectura real vigente en Docker Compose, el sistema de autenticación híbrido (Firebase Auth + Laravel Sanctum), el control de acceso basado en 3 roles (`superadmin`, `admin`, `student`), el Tutor IA con Markdown/KaTeX e historial en MongoDB, el microservicio `athena-question-bank` y la pasarela de pagos Wompi integrada con PostgreSQL. |
+| **Propósito** | Documentar con precisión la arquitectura real vigente en Docker Compose, el sistema de autenticación híbrido (Firebase Auth + Laravel Sanctum), el control de acceso basado en 3 roles (`superadmin`, `admin`, `student`), el Tutor IA con Markdown/KaTeX e historial en MongoDB, el microservicio `athena-question-bank`, el Ranking Académico y Racha de Estudio sincronizada, y la pasarela de pagos Wompi integrada con PostgreSQL. |
 
 ---
 
@@ -38,6 +38,7 @@
 | **0.3** | Noviembre 2026 | Integración de contexto de migración, auditoría de respaldo y diseño del microservicio Question Bank. | Equipo ATHENA |
 | **1.0** | Noviembre 2026 | Incorporación de la arquitectura de microservicios contenerizados con Docker Compose, migración de Core a PostgreSQL 16 Alpine, desacoplamiento de `athena-question-bank` con Supabase (PostgreSQL + S3 Storage) y Gateway Nginx en puerto 8080. | Equipo ATHENA |
 | **1.1** | Noviembre 2026 | **Actualización Integral Post-Integración:** Unificación de RBAC a 3 roles activos (`superadmin`, `admin`, `student`), selector forzado de cuentas Google (`prompt: 'select_account'`), logout atómico Firebase + Sanctum, CRUD exclusivo de usuarios/roles para SuperAdmin (`/api/users/*`), Tutor IA con renderizado Markdown/KaTeX y Off-canvas Drawer derecho en CSS puro, e integración completa de la pasarela oficial Wompi (Widget + Web Checkout en nueva pestaña + polling automático + Webhook firmado SHA-256). | Equipo ATHENA |
+| **1.2** | Noviembre 2026 | **Limpieza General y Depuración de Gamificación:** Retiro de subsistemas de gamificación descartados (Tienda Virtual, Monedas, Niveles/XP, Logros/Medallas y tablas asociadas mediante la migración `2026_11_25_000001_remove_gamification_tables_and_columns.php`), **conservando y sincronizando el Ranking Académico Oficial y la Racha de Estudio (`streak_days`)** entre `/profile` y `/statistics`; desinstalación total de paquetes Tailwind CSS (`tailwindcss`, `@tailwindcss/vite`); y eliminación de rutas/controladores legacy (`/api/subscriptions/*`, `/api/profile/*`, `FirebaseAuth`). | Equipo ATHENA |
 
 ---
 
@@ -252,11 +253,11 @@ El sistema se orquesta mediante [docker-compose.yml](file:///c:/Users/xxrya/proy
 ## 9. Persistencia Políglota y Modelo de Datos
 
 1. **PostgreSQL 16 (`athena-db` - Base `Athena`):**
-   - **`users`**: `id`, `full_name`, `email`, `phone`, `password`, `role` (`superadmin`, `admin`, `student`), `status` (`active`, `blocked`), `firebase_uid`, `grade`, `target_icfes_score`, `level`, `xp`, `coins`, `streak_days`, `last_login_at`, `remember_token`.
+   - **`users`**: `id`, `full_name`, `email`, `phone`, `password`, `role` (`superadmin`, `admin`, `student`), `status` (`active`, `blocked`), `firebase_uid`, `grade`, `target_icfes_score`, `streak_days` (racha de días consecutivos de estudio sincronizada con `student_answers`), `last_login_at`, `remember_token`. *(Las columnas de gamificación `level`, `xp` y `coins` fueron retiradas mediante migración segura).*
    - **`personal_access_tokens`**: Tokens de sesión emitidos por Laravel Sanctum (revocados automáticamente al bloquear un usuario o cerrar sesión).
    - **`subscription_plans`**: Catálogo oficial de planes (`ATHENA Pro`, `ATHENA Premium trimestral`, `ATHENA Anual`) con `price`, `duration_days`, `description`, `is_active`.
    - **`subscriptions`**: Suscripciones de usuarios con estados `pending`, `active`, `cancelled`, `expired`, `start_date` y `end_date`.
-   - **Tablas académicas y de gamificación**: `subjects`, `topics`, `questions`, `question_options`, `exam_configs`, `exam_attempts`, `attempt_answers`, `user_topic_performance`, `achievements`, `notifications`.
+   - **Tablas académicas y operativas**: `subjects`, `topics`, `questions`, `question_options`, `exam_configs`, `exam_attempts`, `attempt_answers`, `user_topic_performance`, `notifications`, `payment_transactions`. *(Las tablas de gamificación `achievements`, `user_achievements`, `store_items`, `purchases`, `inventories` y las tablas SQL legacy `ai_chat_sessions` y `ai_chat_messages` fueron retiradas mediante `2026_11_25_000001_remove_gamification_tables_and_columns.php`).*
 
 2. **MongoDB (`athena_ai`):**
    - **`ai_conversations`** (`App\Models\Mongo\AiConversation`): Conversaciones del Tutor IA vinculadas a `user_id` (entero de PostgreSQL), `title`, `messages` (arreglo de turnos `user` / `assistant`) y marcas de tiempo.
@@ -393,7 +394,8 @@ Para recibir eventos `transaction.updated` en vivo desde Wompi Sandbox hacia tu 
 | **Gestión de Usuarios** | Sin persistencia real de roles ni bloqueo de sesiones. | **CRUD completo en PostgreSQL** (`/api/users/*`) exclusivo para SuperAdmin con revocación inmediata de tokens Sanctum. |
 | **Pasarela de Pagos** | Postergada o simulada con mocks en `localStorage`. | **Integración real con Wompi Sandbox** (`/api/payments/*`), Widget + Web Checkout en nueva pestaña, polling en vivo y Webhook firmado. |
 | **Tutor IA** | Texto plano sin historial persistente. | **Renderizado Markdown + KaTeX**, historial privado en MongoDB y *Off-canvas Drawer* derecho en CSS puro. |
-| **Estilos Frontend** | Mezcla de utilidades Tailwind y CSS. | **100% CSS Puro en Tema Oscuro** en todos los módulos intervenidos. |
+| **Estilos Frontend** | Mezcla de utilidades Tailwind y CSS. | **100% CSS Puro en Tema Oscuro** (paquetes `tailwindcss` y `@tailwindcss/vite` desinstalados de `package.json` y `vite.config.js`). |
+| **Motivación y Seguimiento** | Tienda virtual, monedas, XP, niveles y medallas mockeadas. | **Ranking Académico Oficial** (basado en aciertos reales ICFES) y **Racha de Estudio (`streak_days`)** sincronizada en tiempo real entre `/profile` y `/statistics`. |
 
 ---
 
