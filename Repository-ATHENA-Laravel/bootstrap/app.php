@@ -18,7 +18,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,
-            'firebase.auth' => \App\Http\Middleware\FirebaseAuth::class,
         ]);
 
         // Asegura que toda petición autenticada en la API verifique que el usuario no esté bloqueado

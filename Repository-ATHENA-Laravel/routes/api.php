@@ -43,10 +43,8 @@ Route::prefix('topics')->group(base_path('routes/topics.php'));
 Route::prefix('questions')->group(base_path('routes/questions.php'));
 Route::prefix('exams')->group(base_path('routes/exams.php'));
 Route::prefix('progress')->group(base_path('routes/progress.php'));
-Route::prefix('profile')->group(base_path('routes/profile.php'));
 Route::prefix('ai')->group(base_path('routes/ai.php'));
 Route::prefix('notifications')->group(base_path('routes/notifications.php'));
-Route::prefix('subscriptions')->group(base_path('routes/subscriptions.php'));
 
 // Pasarela de pagos Wompi (Web Checkout, Widget Oficial, Historial y Webhook firmado)
 Route::prefix('payments')->group(function () {

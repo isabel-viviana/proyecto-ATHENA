@@ -31,10 +31,8 @@ class TestDbController extends Controller
                 'examConfigs',
                 'examAttempts',
                 'userTopicPerformances',
-                'userAchievements',
                 'notifications',
                 'subscriptions',
-                'aiChatSessions'
             ])->first();
 
         return response()->json([
@@ -44,17 +42,14 @@ class TestDbController extends Controller
                 'id' => $userWithCounts->id,
                 'nombre' => $userWithCounts->full_name,
                 'email' => $userWithCounts->email,
-                'xp_actual' => $userWithCounts->xp,
-                'monedas' => $userWithCounts->coins,
+                'racha_dias' => $userWithCounts->streak_days,
             ],
             'conteos_relacionales_eloquent' => [
                 'configuraciones_de_examenes' => $userWithCounts->exam_configs_count,
                 'intentos_de_simulacros' => $userWithCounts->exam_attempts_count,
                 'rendimientos_por_tema' => $userWithCounts->user_topic_performances_count,
-                'logros_desbloqueados' => $userWithCounts->user_achievements_count,
                 'notificaciones_enviadas' => $userWithCounts->notifications_count,
                 'suscripciones_asociadas' => $userWithCounts->subscriptions_count,
-                'sesiones_chat_ia' => $userWithCounts->ai_chat_sessions_count,
             ]
         ]);
     }
@@ -138,7 +133,6 @@ class TestDbController extends Controller
             ->with([
                 'subscriptions.subscriptionPlan',
                 'subscriptions.paymentTransactions',
-                'aiChatSessions.aiChatMessages'
             ])->first();
 
         return response()->json([
@@ -155,14 +149,6 @@ class TestDbController extends Controller
                     'estado_pago' => $tx->status
                 ])
             ]),
-            'chats_con_tutor_ia' => $fullUserContext->aiChatSessions->map(fn($session) => [
-                'sesion_titulo' => $session->title,
-                'conversacion' => $session->aiChatMessages->map(fn($msg) => [
-                    'remitente' => $msg->sender_type,
-                    'mensaje' => $msg->message,
-                    'hora' => $msg->created_at->toTimeString()
-                ])
-            ])
         ]);
     }
 

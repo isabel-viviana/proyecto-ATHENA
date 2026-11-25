@@ -65,7 +65,7 @@ class EnsureAdminAuthenticated
         // 4. Verificación estricta de rol administrativo
         $rawRole = strtolower(trim((string) ($payload['role'] ?? '')));
         $role = $rawRole === 'super_admin' ? 'superadmin' : $rawRole;
-        $allowedRoles = ['admin', 'superadmin', 'support', 'docente', 'coordinador'];
+        $allowedRoles = ['admin', 'superadmin'];
 
         if (!in_array($role, $allowedRoles, true)) {
             return response()->json([

@@ -11,10 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\ExamConfig;
 use App\Models\ExamAttempt;
 use App\Models\UserTopicPerformance;
-use App\Models\UserAchievement;
 use App\Models\Notification;
 use App\Models\Subscription;
-use App\Models\AiChatSession;
 
 class User extends Authenticatable
 {
@@ -38,7 +36,7 @@ class User extends Authenticatable
         if (in_array($clean, ['superadmin', 'super_admin'], true)) {
             return self::ROLE_SUPERADMIN;
         }
-        if (in_array($clean, ['admin', 'support', 'docente', 'coordinador'], true)) {
+        if ($clean === 'admin') {
             return self::ROLE_ADMIN;
         }
 
@@ -61,9 +59,6 @@ class User extends Authenticatable
         'avatar_url',
         'grade',
         'target_icfes_score',
-        'level',
-        'xp',
-        'coins',
         'streak_days',
         'last_login_at',
     ];
@@ -87,10 +82,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'last_login_at' => 'datetime',
         'password' => 'hashed',
-        'xp' => 'integer',
-        'coins' => 'integer',
         'streak_days' => 'integer',
-        'level' => 'integer',
         'target_icfes_score' => 'integer',
     ];
 
@@ -124,11 +116,6 @@ class User extends Authenticatable
         return $this->hasMany(UserTopicPerformance::class);
     }
 
-    public function userAchievements(): HasMany
-    {
-        return $this->hasMany(UserAchievement::class);
-    }
-
     public function notifications(): HasMany
     {
         return $this->hasMany(Notification::class);
@@ -137,10 +124,5 @@ class User extends Authenticatable
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
-    }
-
-    public function aiChatSessions(): HasMany
-    {
-        return $this->hasMany(AiChatSession::class);
     }
 }

@@ -205,7 +205,7 @@ const Ranking = () => {
                                                 {student.public_name}
                                             </h4>
                                             <span style={{ color: "#94a3b8", fontSize: "12px" }}>
-                                                {student.grade} • Nivel {student.level}
+                                                {student.grade}
                                             </span>
                                         </div>
                                     </div>

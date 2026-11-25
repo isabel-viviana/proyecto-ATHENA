@@ -86,12 +86,6 @@ const Profile = () => {
         );
     }
 
-    // Cálculos seguros de progreso de XP
-    const userLevel = profile?.level || 1;
-    const currentXp = profile?.xp || 0;
-    const targetXpForLevel = userLevel * 1000;
-    const xpPercent = Math.min(100, Math.round((currentXp / targetXpForLevel) * 100));
-
     // Inicial del avatar
     const initial = profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : "A";
 
@@ -115,7 +109,6 @@ const Profile = () => {
                         ) : (
                             <div className="avatar-circle">{initial}</div>
                         )}
-                        <span className="level-badge">LVL {userLevel}</span>
                     </div>
 
                     <div className="profile-user__info">
@@ -146,44 +139,11 @@ const Profile = () => {
                                 Meta ICFES: {profile?.target_icfes_score || 350} pts
                             </span>
                         </div>
-
-                        {/* XP */}
-                        <div className="xp-container" style={{ marginTop: "16px" }}>
-                            <div className="xp-label">
-                                <span>
-                                    Nivel <strong>{userLevel}</strong>
-                                </span>
-                                <span>
-                                    <strong>{xpPercent}%</strong> para el siguiente nivel
-                                </span>
-                            </div>
-
-                            <div className="xp-bar-bg">
-                                <div className="xp-bar-fill" style={{ width: `${xpPercent}%` }}></div>
-                            </div>
-
-                            <p className="xp-count">
-                                {currentXp.toLocaleString()} / {targetXpForLevel.toLocaleString()} XP
-                            </p>
-                        </div>
                     </div>
                 </div>
 
                 {/* QUICK STATS */}
                 <div className="quick-stats">
-                    <div className="quick-card">
-                        <div className="quick-card__icon quick-card__icon--gold">
-                            <i className="fas fa-coins"></i>
-                        </div>
-                        <div className="quick-card__content">
-                            <span className="quick-card__value">{(profile?.coins || 0).toLocaleString()}</span>
-                            <span className="quick-card__label">Monedas</span>
-                        </div>
-                        <Link to="/store" className="quick-card__link">
-                            Ver tienda
-                        </Link>
-                    </div>
-
                     <div className="quick-card">
                         <div className="quick-card__icon quick-card__icon--red">
                             <i className="fas fa-fire"></i>
@@ -257,22 +217,6 @@ const Profile = () => {
 
             {/* ACCOUNT GRID */}
             <section className="account-grid">
-                <Link to="/profile/achievements">
-                    <article className="action-card">
-                        <div className="action-card__icon blue-bg">
-                            <i className="fas fa-award"></i>
-                        </div>
-                        <div className="action-card__content">
-                            <h3>Mis Logros</h3>
-                            <p>Descubre tus medallas y reconocimientos desbloqueados.</p>
-                            <span className="action-card__badge blue">
-                                4 disponibles
-                            </span>
-                        </div>
-                        <i className="fas fa-chevron-right action-card__arrow"></i>
-                    </article>
-                </Link>
-
                 <Link to="/statistics">
                     <article className="action-card">
                         <div className="action-card__icon purple-bg">

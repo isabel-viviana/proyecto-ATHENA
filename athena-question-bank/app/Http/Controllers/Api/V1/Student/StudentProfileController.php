@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\V1\Student;
 
 use App\Http\Controllers\Controller;
+use App\Models\StudentAnswer;
 use App\Services\StudentTokenService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +21,47 @@ class StudentProfileController extends Controller
     {
         $token = StudentTokenService::extractTokenFromRequest($request);
         return StudentTokenService::validateToken($token);
+    }
+
+    /**
+     * Calcula la racha real de días consecutivos con actividad en student_answers,
+     * utilizando exactamente la misma lógica que StudentQuestionController::progress().
+     */
+    protected function calculateRealStreak(string|int $studentId): int
+    {
+        try {
+            $dates = StudentAnswer::where('student_id', (string) $studentId)
+                ->select(DB::raw('DATE(answered_at) as practice_date'))
+                ->groupBy(DB::raw('DATE(answered_at)'))
+                ->orderBy('practice_date', 'desc')
+                ->pluck('practice_date')
+                ->map(fn($d) => substr((string) $d, 0, 10))
+                ->all();
+
+            $realStreak = 0;
+            $currentDate = now()->toDateString();
+            $yesterdayDate = now()->subDay()->toDateString();
+
+            if (! empty($dates)) {
+                if ($dates[0] === $currentDate || $dates[0] === $yesterdayDate) {
+                    $checkDate = Carbon::parse($dates[0]);
+                    $realStreak = 1;
+                    for ($i = 1; $i < count($dates); $i++) {
+                        $prevDate = Carbon::parse($dates[$i]);
+                        if ($checkDate->diffInDays($prevDate) === 1) {
+                            $realStreak++;
+                            $checkDate = $prevDate;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return $realStreak;
+        } catch (Throwable) {
+            return 0;
+        }
     }
 
     /**
@@ -39,6 +82,8 @@ class StudentProfileController extends Controller
         $studentId = $authStudent['sub'];
 
         try {
+            $realStreak = $this->calculateRealStreak($studentId);
+
             $user = DB::connection('athena_core')
                 ->table('users')
                 ->where('id', $studentId)
@@ -56,14 +101,23 @@ class StudentProfileController extends Controller
                         'avatar_url'         => null,
                         'grade'              => '11° Grado',
                         'target_icfes_score' => 380,
-                        'level'              => 1,
-                        'xp'                 => 100,
-                        'coins'              => 20,
-                        'streak_days'        => 1,
+                        'streak_days'        => $realStreak,
                         'status'             => 'Activo',
                         'created_at'         => now()->toIso8601String(),
                     ],
                 ]);
+            }
+
+            // Sincronizar streak_days en users si difiere del cálculo real en student_answers
+            if ((int) ($user->streak_days ?? 0) !== $realStreak) {
+                try {
+                    DB::connection('athena_core')
+                        ->table('users')
+                        ->where('id', $user->id)
+                        ->update(['streak_days' => $realStreak]);
+                } catch (Throwable) {
+                    // Continuar sin bloquear la lectura del perfil
+                }
             }
 
             return response()->json([
@@ -77,10 +131,7 @@ class StudentProfileController extends Controller
                     'avatar_url'         => $user->avatar_url,
                     'grade'              => $user->grade ?: 'Grado 11°',
                     'target_icfes_score' => $user->target_icfes_score ?: 350,
-                    'level'              => (int) ($user->level ?? 1),
-                    'xp'                 => (int) ($user->xp ?? 0),
-                    'coins'              => (int) ($user->coins ?? 0),
-                    'streak_days'        => (int) ($user->streak_days ?? 0),
+                    'streak_days'        => $realStreak,
                     'status'             => 'Activo',
                     'created_at'         => $user->created_at,
                     'last_login_at'      => $user->last_login_at,
@@ -96,7 +147,7 @@ class StudentProfileController extends Controller
 
     /**
      * Actualiza los campos permitidos del perfil del estudiante.
-     * Protege estrictamente id, role, email, xp, coins, nivel, etc.
+     * Protege estrictamente id, role, email, etc.
      *
      * PUT /api/v1/student/profile
      */
@@ -140,6 +191,9 @@ class StudentProfileController extends Controller
         $updateData['updated_at'] = now();
 
         try {
+            $realStreak = $this->calculateRealStreak($studentId);
+            $updateData['streak_days'] = $realStreak;
+
             DB::connection('athena_core')
                 ->table('users')
                 ->where('id', $studentId)
@@ -162,10 +216,7 @@ class StudentProfileController extends Controller
                     'avatar_url'         => $user->avatar_url,
                     'grade'              => $user->grade ?: 'Grado 11°',
                     'target_icfes_score' => $user->target_icfes_score ?: 350,
-                    'level'              => (int) ($user->level ?? 1),
-                    'xp'                 => (int) ($user->xp ?? 0),
-                    'coins'              => (int) ($user->coins ?? 0),
-                    'streak_days'        => (int) ($user->streak_days ?? 0),
+                    'streak_days'        => $realStreak,
                     'status'             => 'Activo',
                     'created_at'         => $user->created_at,
                 ],

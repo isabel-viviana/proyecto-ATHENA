@@ -35,8 +35,6 @@ class ExamAttempt extends Model
         'correct_answers',
         'incorrect_answers',
         'omitted_answers',
-        'xp_earned',
-        'coins_earned',
         'status',
     ];
 
@@ -48,8 +46,6 @@ class ExamAttempt extends Model
         'correct_answers' => 'integer',
         'incorrect_answers' => 'integer',
         'omitted_answers' => 'integer',
-        'xp_earned' => 'integer',
-        'coins_earned' => 'integer',
         'mode' => 'string',
         'status' => 'string',
     ];

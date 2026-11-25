@@ -44,12 +44,10 @@ import PracticesFull from "./pages/practices/practice_full";
 import PracticesResult from "./pages/practices/practice_results";
 import PracticeReview from "./pages/practices/practice_review";
 import Profiles from "./pages/profiles/profile";
-import ProfileLogros from "./pages/profiles/profile_achievements";
 import ProfileEdit from "./pages/profiles/profile_edit";
 import Ranking from "./pages/ranking/ranking";
 import Statistics from "./pages/statistics/statistics";
 import Analysis from "./pages/statistics/analysis";
-import Store from "./pages/store/store";
 import Subscriptions from "./pages/subscriptions/subscription";
 import Notificaciones from "./pages/profiles/profile_notifications";
 import ForgotPassword from "./pages/authentications/forgot_password";
@@ -123,7 +121,6 @@ function App() {
                     <Route path="/super/dashboard" element={<Navigate to="/dashboard/superadmin" replace />} />
                     <Route path="/admin/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
                     <Route path="/admin/support" element={<DashboardSupport />} />
-                    <Route path="/support/dashboard" element={<Navigate to="/admin/support" replace />} />
                     <Route path="/admin/users" element={<Users />} />
                     <Route path="/admin/questions" element={<Questions />} />
                     <Route path="/admin/subjects" element={<Subjects />} />
@@ -159,7 +156,6 @@ function App() {
                     <Route path="/profile" element={<ProfileLayout />}>
                         <Route index element={<Profiles />} />
                         <Route path="edit" element={<ProfileEdit />} />
-                        <Route path="achievements" element={<ProfileLogros />} />
                         <Route path="notifications" element={<Notificaciones />} />
                     </Route>
 
@@ -170,7 +166,6 @@ function App() {
                         element={<Navigate to="/profile/notifications" replace />}
                     />
                     <Route path="/analysis" element={<Analysis />} />
-                    <Route path="/store" element={<Store />} />
                     <Route path="/suscripciones" element={<Subscriptions />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/payments" element={<Payments />} />

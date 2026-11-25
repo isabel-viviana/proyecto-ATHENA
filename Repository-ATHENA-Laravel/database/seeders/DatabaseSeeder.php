@@ -3,26 +3,19 @@
 namespace Database\Seeders;
 
 use App\Http\Controllers\Auth\AuthController;
-use App\Models\Achievement;
-use App\Models\AiChatMessage;
-use App\Models\AiChatSession;
 use App\Models\AttemptAnswer;
 use App\Models\ExamAttempt;
 use App\Models\ExamConfig;
 use App\Models\ExamConfigSubject;
-use App\Models\Inventory;
 use App\Models\Notification;
 use App\Models\PaymentTransaction;
-use App\Models\Purchase;
 use App\Models\Question;
 use App\Models\QuestionOption;
-use App\Models\StoreItem;
 use App\Models\Subject;
 use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
 use App\Models\Topic;
 use App\Models\User;
-use App\Models\UserAchievement;
 use App\Models\UserTopicPerformance;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -187,38 +180,8 @@ class DatabaseSeeder extends Seeder
             }
         }
 
-        // 8. Logros de Gamificación
-        $achievementsData = [
-            ['title' => 'Primera Sangre', 'desc' => 'Completa tu primer simulacro diagnóstico.', 'cat' => 'exams'],
-            ['title' => 'Racha Imparable', 'desc' => 'Estudia 7 días seguidos en ATHENA.', 'cat' => 'streak'],
-            ['title' => 'Einstein Moderno', 'desc' => 'Saca 100% en un simulacro de Ciencias Naturales.', 'cat' => 'study'],
-            ['title' => 'Pionero ATHENA', 'desc' => 'Participa en la fase beta de la plataforma.', 'cat' => 'special'],
-        ];
-
-        $achievements = collect();
-        foreach ($achievementsData as $ach) {
-            $achievements->push(Achievement::factory()->create([
-                'title' => $ach['title'],
-                'description' => $ach['desc'],
-                'category' => $ach['cat'],
-                'xp_reward' => $faker->numberBetween(50, 200),
-                'coin_reward' => $faker->numberBetween(20, 100),
-                'unlock_rule' => 'Regla interna del sistema',
-            ]));
-        }
-
-        // 9. Asignación de Logros y Rendimiento
+        // 8. Rendimiento por Tema
         foreach ($users as $user) {
-            $userAchievements = $achievements->random(rand(1, 2));
-            foreach ($userAchievements as $ua) {
-                UserAchievement::factory()->create([
-                    'user_id' => $user->id,
-                    'achievement_id' => $ua->id,
-                    'unlocked_at' => $faker->dateTimeBetween('-1 month', 'now'),
-                    'progress' => 100,
-                ]);
-            }
-
             $userTopics = $topics->random(rand(3, 8));
             foreach ($userTopics as $ut) {
                 UserTopicPerformance::create([
@@ -232,14 +195,14 @@ class DatabaseSeeder extends Seeder
             }
         }
 
-        // 10. Planes de Suscripción
+        // 9. Planes de Suscripción
         $plans = collect([
             ['name' => 'Básico', 'price' => 0.00, 'duration_days' => 30, 'description' => 'Simulacros limitados y tutoría IA básica.', 'is_active' => true],
             ['name' => 'ATHENA Pro', 'price' => 15000.00, 'duration_days' => 30, 'description' => 'Simulacros ilimitados y tutoría IA GPT-4 Turbo.', 'is_active' => true],
             ['name' => 'ATHENA Anual', 'price' => 120000.00, 'duration_days' => 365, 'description' => 'Preparación total hasta el día del examen ICFES.', 'is_active' => true],
         ])->map(fn (array $attributes) => SubscriptionPlan::factory()->create($attributes));
 
-        // 11. Suscripciones y Pagos
+        // 10. Suscripciones y Pagos
         foreach ($users as $user) {
             if ($faker->boolean(60)) {
                 $plan = $plans->random();
@@ -262,47 +225,7 @@ class DatabaseSeeder extends Seeder
             }
         }
 
-        // 12. Artículos de la Tienda (Personalización de Mascota ATHENA)
-        $storeItemsData = [
-            ['name' => 'Gafas de Intelectual', 'cat' => 'avatar', 'desc' => 'Equipa a tu mascota con gafas de lectura.'],
-            ['name' => 'Sombrero de Graduado', 'cat' => 'avatar', 'desc' => 'Un birrete para tu mascota.'],
-            ['name' => 'Fondo Biblioteca', 'cat' => 'theme', 'desc' => 'Cambia el fondo de tu panel a una biblioteca.'],
-            ['name' => 'Doble XP (24h)', 'cat' => 'booster', 'desc' => 'Gana el doble de experiencia hoy.'],
-        ];
-
-        $storeItems = collect();
-        foreach ($storeItemsData as $item) {
-            $storeItems->push(StoreItem::factory()->create([
-                'name' => $item['name'],
-                'description' => $item['desc'],
-                'category' => $item['cat'],
-                'price_coins' => $faker->numberBetween(100, 500),
-                'image_url' => 'assets/store/' . Str::slug($item['name']) . '.png',
-                'is_active' => true,
-            ]));
-        }
-
-        // 13. Compras e Inventarios
-        foreach ($users as $user) {
-            if ($faker->boolean(50)) {
-                $itemsToBuy = $storeItems->random(rand(1, 2));
-                foreach ($itemsToBuy as $item) {
-                    Purchase::create([
-                        'user_id' => $user->id,
-                        'store_item_id' => $item->id,
-                        'coins_spent' => $item->price_coins,
-                    ]);
-                    Inventory::create([
-                        'user_id' => $user->id,
-                        'store_item_id' => $item->id,
-                        'equipped' => $faker->boolean(),
-                        'acquired_at' => now(),
-                    ]);
-                }
-            }
-        }
-
-        // 14. Notificaciones
+        // 11. Notificaciones
         foreach ($users as $user) {
             Notification::factory()->create([
                 'user_id' => $user->id,
@@ -312,28 +235,7 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        // 15. Sesiones de Chat con IA (Tutor ATHENA)
-        foreach ($users as $user) {
-            if ($faker->boolean(70)) {
-                $session = AiChatSession::factory()->create([
-                    'user_id' => $user->id,
-                    'title' => 'Duda sobre pregunta de Estequiometría',
-                ]);
-
-                AiChatMessage::factory()->create([
-                    'session_id' => $session->id,
-                    'sender_type' => 'user',
-                    'message' => 'No entiendo por qué la respuesta correcta en la pregunta de Ciencias era la B. ¿Me explicas cómo balancear la ecuación?',
-                ]);
-                AiChatMessage::factory()->create([
-                    'session_id' => $session->id,
-                    'sender_type' => 'ai',
-                    'message' => '¡Hola! Claro que sí. En esa pregunta del ICFES se evalúa la ley de conservación de la masa. Para balancear la ecuación, debes asegurarte de que el número de átomos de reactivos sea igual al de los productos. Vamos paso a paso...',
-                ]);
-            }
-        }
-
-        // 13. Banco de Preguntas Mínimo para Prácticas de Matemáticas
+        // 12. Banco de Preguntas Mínimo para Prácticas de Matemáticas
         $this->call(MathematicsPracticeQuestionsSeeder::class);
     }
 }

@@ -35,8 +35,6 @@ class ExamAttemptFactory extends Factory
             'correct_answers' => $correct,
             'incorrect_answers' => $incorrect,
             'omitted_answers' => $omitted,
-            'xp_earned' => $correct * 10,
-            'coins_earned' => $correct * 5,
             'status' => fake()->randomElement(['completed', 'in_progress', 'cancelled']),
         ];
     }
