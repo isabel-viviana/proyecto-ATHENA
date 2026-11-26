@@ -44,22 +44,22 @@ import PracticesFull from "./pages/practices/practice_full";
 import PracticesResult from "./pages/practices/practice_results";
 import PracticeReview from "./pages/practices/practice_review";
 import Profiles from "./pages/profiles/profile";
-import ProfileLogros from "./pages/profiles/profile_achievements";
+import ProfileAchievements from "./pages/profiles/profile_achievements";
 import ProfileEdit from "./pages/profiles/profile_edit";
 import Ranking from "./pages/ranking/ranking";
 import Statistics from "./pages/statistics/statistics";
-import Analysis from "./pages/statistics/analysis";
-import Store from "./pages/store/store";
 import Subscriptions from "./pages/subscriptions/subscription";
 import Notificaciones from "./pages/profiles/profile_notifications";
 import ForgotPassword from "./pages/authentications/forgot_password";
 import ResetPassword from "./pages/authentications/reset_password";
 import Payments from "./pages/subscriptions/payments";
+import PaymentReturn from "./pages/subscriptions/payment_return";
 
 // Auth & Route Guards
 import useAuthStore from "./stores/useAuthStore";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
+import GuestRoute from "./components/GuestRoute";
 
 function App() {
     const initAuth = useAuthStore((s) => s.initAuth);
@@ -74,30 +74,67 @@ function App() {
     return (
         <Router>
             <Routes>
-                {/* Rutas sin Sidebar (Login/Registro Estudiante) */}
-                <Route path="/login" element={<LoginStudent />} />
-                <Route path="/register" element={<RegisterStudent />} />
+                {/* Rutas de Invitado (redirigen automáticamente al dashboard si ya tiene sesión activa) */}
+                <Route
+                    path="/login"
+                    element={
+                        <GuestRoute>
+                            <LoginStudent />
+                        </GuestRoute>
+                    }
+                />
+                <Route
+                    path="/register"
+                    element={
+                        <GuestRoute>
+                            <RegisterStudent />
+                        </GuestRoute>
+                    }
+                />
                 <Route path="/forgotPassword" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
 
-                {/* Ruta de Autenticación Administrativa */}
-                <Route path="/admin/login" element={<LoginAdmin />} />
+                {/* Ruta pública de retorno desde Wompi Web Checkout */}
+                <Route path="/payment-return" element={<PaymentReturn />} />
+                <Route path="/payments/return" element={<PaymentReturn />} />
 
-                {/* Rutas del Módulo Administrativo (AdminLayout) */}
-                <Route element={<AdminRoute><AdminLayout /></AdminRoute>}>
+                {/* Ruta de Autenticación Administrativa */}
+                <Route
+                    path="/admin/login"
+                    element={
+                        <GuestRoute>
+                            <LoginAdmin />
+                        </GuestRoute>
+                    }
+                />
+
+                {/* Rutas del Módulo Administrativo (AdminRoute: solo superadmin y admin) */}
+                <Route
+                    element={
+                        <AdminRoute allowedRoles={["superadmin", "admin"]}>
+                            <AdminLayout />
+                        </AdminRoute>
+                    }
+                >
                     <Route path="/dashboard/superadmin" element={<DashboardSuper />} />
                     <Route path="/dashboard/admin" element={<DashboardAdmin />} />
-                    <Route path="/super/dashboard" element={<DashboardSuper />} />
-                    <Route path="/admin/dashboard" element={<DashboardAdmin />} />
-                    <Route path="/support/dashboard" element={<DashboardSupport />} />
+                    <Route path="/super/dashboard" element={<Navigate to="/dashboard/superadmin" replace />} />
+                    <Route path="/admin/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
+                    <Route path="/admin/support" element={<DashboardSupport />} />
                     <Route path="/admin/users" element={<Users />} />
                     <Route path="/admin/questions" element={<Questions />} />
                     <Route path="/admin/subjects" element={<Subjects />} />
                     <Route path="/admin/exams" element={<Exams />} />
                 </Route>
 
-                {/* Rutas con Sidebar Estudiante (MainLayout) */}
-                <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+                {/* Rutas con Sidebar Estudiante (ProtectedRoute: rol student) */}
+                <Route
+                    element={
+                        <ProtectedRoute allowedRoles={["student", "user"]}>
+                            <MainLayout />
+                        </ProtectedRoute>
+                    }
+                >
                     <Route path="/dashboard" element={<Dashboard />} />
 
                     <Route path="/mock" element={<MockLayout />}>
@@ -113,44 +150,32 @@ function App() {
                     <Route path="/ai-tutor" element={<AiTutor />} />
                     <Route path="/practices" element={<Practices />} />
                     <Route path="/practices-full" element={<PracticesFull />} />
-                    <Route
-                        path="/practices-result"
-                        element={<PracticesResult />}
-                    />
-                    <Route
-                        path="/practices-review"
-                        element={<PracticeReview />}
-                    />
+                    <Route path="/practices-result" element={<PracticesResult />} />
+                    <Route path="/practices-review" element={<PracticeReview />} />
 
                     <Route path="/profile" element={<ProfileLayout />}>
                         <Route index element={<Profiles />} />
                         <Route path="edit" element={<ProfileEdit />} />
-                        <Route
-                            path="achievements"
-                            element={<ProfileLogros />}
-                        />
-                        <Route
-                            path="notifications"
-                            element={<Notificaciones />}
-                        />
+                        <Route path="achievements" element={<ProfileAchievements />} />
+                        <Route path="notifications" element={<Notificaciones />} />
                     </Route>
 
                     <Route path="/ranking" element={<Ranking />} />
                     <Route path="/statistics" element={<Statistics />} />
-                    <Route path="/notifications" element={<Navigate to="/profile/notifications" replace />} />
-                    <Route path="/analysis" element={<Analysis />} />
-                    <Route path="/store" element={<Store />} />
+                    <Route
+                        path="/notifications"
+                        element={<Navigate to="/profile/notifications" replace />}
+                    />
                     <Route path="/suscripciones" element={<Subscriptions />} />
                     <Route path="/subscriptions" element={<Subscriptions />} />
                     <Route path="/payments" element={<Payments />} />
                 </Route>
 
                 {/* Redirección por defecto */}
-                <Route path="*" element={<Navigate to="/login" />} />
+                <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
         </Router>
     );
 }
 
 export default App;
-

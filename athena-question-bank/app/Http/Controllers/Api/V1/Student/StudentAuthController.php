@@ -38,6 +38,17 @@ class StudentAuthController extends Controller
                 ->first();
 
             if ($userRecord) {
+                $isSuspended = ($userRecord->remember_token ?? null) === 'SUSPENDED'
+                    || in_array(strtolower(trim((string) ($userRecord->status ?? ''))), ['blocked', 'suspended', 'suspendido', 'inactivo', 'inactive'], true);
+
+                if ($isSuspended) {
+                    return response()->json([
+                        'success' => false,
+                        'code'    => 'ACCOUNT_BLOCKED',
+                        'message' => 'Tu cuenta se encuentra suspendida o bloqueada por un administrador.',
+                    ], 403);
+                }
+
                 $user = [
                     'id'        => (string) $userRecord->id,
                     'name'      => $userRecord->full_name ?? $userRecord->name ?? 'Estudiante ATHENA',

@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./dashboard_admin.css";
 import { getAdminStats, toggleAdminUserStatus } from "../../api/documents";
+import useAuthStore, { normalizeUserRole } from "../../stores/useAuthStore";
 
 const DashboardSupport = () => {
     const navigate = useNavigate();
+    const role = useAuthStore((s) => s.role);
+    const isSuperAdmin = normalizeUserRole(role) === "superadmin";
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -103,22 +106,33 @@ const DashboardSupport = () => {
             <div className="adm-hero-card">
                 <div className="adm-hero-info">
                     <span className="adm-hero-badge">
-                        <i className="fa-solid fa-headset"></i> Diagnóstico y Soporte Operativo
+                        <i className="fa-solid fa-headset"></i> Módulo Integrado de Soporte y Auditoría
                     </span>
-                    <h1>Panel de Soporte y Verificación</h1>
+                    <h1>Soporte Académico y Verificación</h1>
                     <p>
-                        Monitoreo real de cuentas estudiantiles en MySQL, observaciones de auditoría del banco de preguntas y estado de cuadernillos en Supabase.
+                        Herramientas integradas de auditoría para Administradores y SuperAdministradores: monitoreo de reactivos con observaciones, estado de extracción de cuadernillos PDF y actividad de simulacros.
                     </p>
                 </div>
                 <div className="adm-hero-actions">
-                    <button
-                        type="button"
-                        className="adm-btn-secondary"
-                        onClick={() => navigate("/admin/users")}
-                    >
-                        <i className="fa-solid fa-users"></i>
-                        <span>Directorio de Usuarios</span>
-                    </button>
+                    {isSuperAdmin ? (
+                        <button
+                            type="button"
+                            className="adm-btn-secondary"
+                            onClick={() => navigate("/admin/users")}
+                        >
+                            <i className="fa-solid fa-users-gear"></i>
+                            <span>Gestionar Usuarios</span>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="adm-btn-secondary"
+                            onClick={() => navigate("/admin/questions")}
+                        >
+                            <i className="fa-solid fa-layer-group"></i>
+                            <span>Banco de Preguntas</span>
+                        </button>
+                    )}
                     <button
                         type="button"
                         className="adm-btn-primary"
@@ -245,7 +259,7 @@ const DashboardSupport = () => {
                                                 </span>
                                             </td>
                                             <td>
-                                                {u.status === "Suspendido" && canManageUsers ? (
+                                                {u.status === "Suspendido" && isSuperAdmin && canManageUsers ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => handleReactivateUser(u)}
@@ -261,7 +275,7 @@ const DashboardSupport = () => {
                                                     >
                                                         Reactivar
                                                     </button>
-                                                ) : (
+                                                ) : isSuperAdmin ? (
                                                     <button
                                                         type="button"
                                                         onClick={() =>
@@ -279,8 +293,12 @@ const DashboardSupport = () => {
                                                             cursor: "pointer",
                                                         }}
                                                     >
-                                                        Ver ficha
+                                                        Gestionar
                                                     </button>
+                                                ) : (
+                                                    <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                                                        Solo lectura
+                                                    </span>
                                                 )}
                                             </td>
                                         </tr>
@@ -364,15 +382,17 @@ const DashboardSupport = () => {
                             </h2>
                         </div>
                         <div className="adm-quick-actions">
-                            <button
-                                type="button"
-                                className="adm-quick-btn"
-                                onClick={() => navigate("/admin/users?status=Suspendido")}
-                            >
-                                <i className="fa-solid fa-user-check"></i>
-                                <span className="adm-quick-btn-title">Cuentas Suspendidas</span>
-                                <span className="adm-quick-btn-desc">Filtrar y reactivar acceso</span>
-                            </button>
+                            {isSuperAdmin && (
+                                <button
+                                    type="button"
+                                    className="adm-quick-btn"
+                                    onClick={() => navigate("/admin/users?status=Suspendido")}
+                                >
+                                    <i className="fa-solid fa-user-check"></i>
+                                    <span className="adm-quick-btn-title">Cuentas Bloqueadas</span>
+                                    <span className="adm-quick-btn-desc">Filtrar y reactivar acceso</span>
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className="adm-quick-btn"

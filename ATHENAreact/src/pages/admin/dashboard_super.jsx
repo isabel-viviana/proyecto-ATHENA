@@ -64,9 +64,9 @@ const DashboardSuper = () => {
 
     const kpis = [
         {
-            label: "Total Usuarios (MySQL)",
+            label: "Total Usuarios (PostgreSQL)",
             value: String(users.total ?? 0),
-            variation: `Estudiantes: ${users.by_role?.student || 0} • Admins: ${(users.by_role?.admin || 0) + (users.by_role?.superadmin || 0)} • Soporte: ${users.by_role?.support || 0}`,
+            variation: `Estudiantes: ${users.by_role?.student || 0} • Admins: ${users.by_role?.admin || 0} • SuperAdmins: ${users.by_role?.superadmin || 0}`,
             icon: "fa-solid fa-users",
             iconTheme: "green",
             isSafe: false,
@@ -137,7 +137,7 @@ const DashboardSuper = () => {
     const quickActions = [
         {
             title: "Gestionar Usuarios y Roles",
-            desc: "Crear cuentas, asignar roles (Admin, Soporte, Super) y controlar acceso",
+            desc: "Crear cuentas, promover o degradar Administradores, bloquear y eliminar usuarios",
             icon: "fa-solid fa-users-gear",
             path: "/admin/users",
         },

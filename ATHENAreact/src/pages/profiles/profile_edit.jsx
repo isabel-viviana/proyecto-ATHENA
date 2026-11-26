@@ -1,15 +1,14 @@
 import "./profile_edit.css";
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
     getStudentProfileData,
     updateStudentProfileData,
     changeStudentPassword,
 } from "../../api/studentQuestions";
+import useAuthStore from "../../stores/useAuthStore";
 
 const ProfileEdit = () => {
-    const navigate = useNavigate();
-
     // Estados para campos personales
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -29,6 +28,8 @@ const ProfileEdit = () => {
     const [savingPassword, setSavingPassword] = useState(false);
     const [statusMessage, setStatusMessage] = useState({ text: "", type: "" });
     const [passwordMessage, setPasswordMessage] = useState({ text: "", type: "" });
+
+    const changePasswordInAuth = useAuthStore((s) => s.changePassword);
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -109,7 +110,7 @@ const ProfileEdit = () => {
         }
     };
 
-    // Cambiar contraseña institucional
+    // Cambiar contraseña institucional (sincronizado con Firebase Auth + PostgreSQL)
     const handlePasswordSubmit = async (e) => {
         e.preventDefault();
         setPasswordMessage({ text: "", type: "" });
@@ -119,9 +120,9 @@ const ProfileEdit = () => {
             return;
         }
 
-        if (newPassword.length < 6) {
+        if (newPassword.length < 8) {
             setPasswordMessage({
-                text: "La nueva contraseña debe tener al menos 6 caracteres.",
+                text: "La nueva contraseña debe tener al menos 8 caracteres.",
                 type: "error",
             });
             return;
@@ -135,32 +136,46 @@ const ProfileEdit = () => {
             return;
         }
 
+        if (currentPassword === newPassword) {
+            setPasswordMessage({
+                text: "La nueva contraseña debe ser diferente a la actual.",
+                type: "error",
+            });
+            return;
+        }
+
         try {
             setSavingPassword(true);
-            const res = await changeStudentPassword({
-                current_password: currentPassword,
-                new_password: newPassword,
+
+            // 1. Reautenticar y actualizar en Firebase Auth + PostgreSQL (athena-backend /api/auth/change-password)
+            const res = await changePasswordInAuth({
+                currentPassword,
+                newPassword,
+                confirmPassword,
             });
 
-            if (res && res.success) {
-                setPasswordMessage({
-                    text: "¡Contraseña actualizada con éxito!",
-                    type: "success",
-                });
-                setCurrentPassword("");
-                setNewPassword("");
-                setConfirmPassword("");
-                setTimeout(() => setPasswordMessage({ text: "", type: "" }), 4000);
-            } else {
-                setPasswordMessage({
-                    text: res?.message || "Error al cambiar la contraseña.",
-                    type: "error",
-                });
-            }
+            // 2. Sincronizar también con el servicio student/profile/password si está disponible
+            await changeStudentPassword({
+                current_password: currentPassword,
+                new_password: newPassword,
+                firebase_verified: true,
+            }).catch(() => {});
+
+            setPasswordMessage({
+                text: res?.message || "¡Contraseña actualizada con éxito!",
+                type: "success",
+            });
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+            setTimeout(() => setPasswordMessage({ text: "", type: "" }), 5000);
         } catch (err) {
             console.error("Error al cambiar contraseña:", err);
             setPasswordMessage({
-                text: err?.response?.data?.message || "Contraseña actual incorrecta.",
+                text:
+                    err?.response?.data?.message ||
+                    err?.message ||
+                    "La contraseña actual ingresada es incorrecta.",
                 type: "error",
             });
         } finally {
@@ -349,7 +364,7 @@ const ProfileEdit = () => {
                             Cambiar Contraseña
                         </h3>
                         <p style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "20px" }}>
-                            Ingresa tu contraseña actual y define una nueva clave con al menos 6 caracteres.
+                            Ingresa tu contraseña actual y define una nueva clave con al menos 8 caracteres.
                         </p>
 
                         {passwordMessage.text && (
@@ -408,7 +423,7 @@ const ProfileEdit = () => {
                                             type="password"
                                             value={newPassword}
                                             onChange={(e) => setNewPassword(e.target.value)}
-                                            placeholder="Mínimo 6 caracteres"
+                                            placeholder="Mínimo 8 caracteres"
                                             required
                                         />
                                     </div>

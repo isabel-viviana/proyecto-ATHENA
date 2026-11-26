@@ -41,16 +41,10 @@ class AdminUserController extends Controller
         return in_array($role, ['superadmin', 'super_admin'], true);
     }
 
-    protected function isSupport(array $admin): bool
-    {
-        $role = strtolower(trim((string) ($admin['role'] ?? '')));
-        return $role === 'support';
-    }
-
     protected function formatUserRow(object $u): array
     {
         $rawRole = strtolower(trim((string) ($u->role ?? 'student')));
-        $role = $rawRole === 'super_admin' ? 'superadmin' : ($rawRole ?: 'student');
+        $role = $rawRole === 'super_admin' ? 'superadmin' : (in_array($rawRole, ['admin', 'superadmin'], true) ? $rawRole : 'student');
         $isSuspended = ($u->remember_token ?? null) === 'SUSPENDED';
 
         return [
@@ -87,7 +81,6 @@ class AdminUserController extends Controller
         $totalStudents = 0;
         $totalAdmins = 0;
         $totalSuperadmins = 0;
-        $totalSupport = 0;
         $activeUsers = 0;
         $suspendedUsers = 0;
         $scoreSum = 0;
@@ -99,8 +92,6 @@ class AdminUserController extends Controller
                 $totalSuperadmins++;
             } elseif ($r === 'admin') {
                 $totalAdmins++;
-            } elseif ($r === 'support') {
-                $totalSupport++;
             } else {
                 $totalStudents++;
             }
@@ -181,7 +172,6 @@ class AdminUserController extends Controller
                 'total_students'       => $totalStudents,
                 'total_admins'         => $totalAdmins,
                 'total_superadmins'    => $totalSuperadmins,
-                'total_support'        => $totalSupport,
                 'active'               => $activeUsers,
                 'active_users'         => $activeUsers,
                 'suspended'            => $suspendedUsers,
@@ -192,7 +182,6 @@ class AdminUserController extends Controller
                     'student'    => $totalStudents,
                     'admin'      => $totalAdmins,
                     'superadmin' => $totalSuperadmins,
-                    'support'    => $totalSupport,
                 ],
             ],
         ]);
@@ -267,13 +256,6 @@ class AdminUserController extends Controller
     {
         $admin = $this->currentAdmin($request);
 
-        if ($this->isSupport($admin)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El rol de soporte técnico no tiene permisos para crear usuarios.',
-            ], 403);
-        }
-
         if (! $request->filled('full_name') && $request->filled('name')) {
             $request->merge(['full_name' => $request->input('name')]);
         }
@@ -283,7 +265,7 @@ class AdminUserController extends Controller
             'email'              => 'required|string|email|max:255',
             'password'           => 'nullable|string|min:6|max:255',
             'phone'              => 'nullable|string|max:50',
-            'role'               => 'nullable|string|in:student,admin,support,superadmin,super_admin',
+            'role'               => 'nullable|string|in:student,admin,superadmin,super_admin',
             'grade'              => 'nullable|string|max:50',
             'target_icfes_score' => 'nullable|integer|min:0|max:500',
             'status'             => 'nullable|string|in:Activo,Suspendido,activo,suspendido',
@@ -298,7 +280,7 @@ class AdminUserController extends Controller
         if (! $this->isSuperAdmin($admin) && $targetRole !== 'student') {
             return response()->json([
                 'success' => false,
-                'message' => 'Solo un Super Administrador puede crear cuentas con rol administrativo o de soporte.',
+                'message' => 'Solo un Super Administrador puede crear cuentas con rol administrativo.',
             ], 403);
         }
 
@@ -329,9 +311,6 @@ class AdminUserController extends Controller
             'role'               => $targetRole,
             'grade'              => $validated['grade'] ?? '11°',
             'target_icfes_score' => isset($validated['target_icfes_score']) ? (int) $validated['target_icfes_score'] : 350,
-            'level'              => 1,
-            'xp'                 => 0,
-            'coins'              => 0,
             'streak_days'        => 0,
             'remember_token'     => $isSuspended ? 'SUSPENDED' : null,
             'created_at'         => $now,
@@ -356,13 +335,6 @@ class AdminUserController extends Controller
     {
         $admin = $this->currentAdmin($request);
 
-        if ($this->isSupport($admin)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El rol de soporte técnico no tiene permisos para editar perfiles de usuario.',
-            ], 403);
-        }
-
         $conn = $this->usersConnection();
         $user = DB::connection($conn)->table('users')->where('id', (int) $id)->first();
 
@@ -382,7 +354,7 @@ class AdminUserController extends Controller
         if (! $this->isSuperAdmin($admin) && $currentUserRole !== 'student') {
             return response()->json([
                 'success' => false,
-                'message' => 'Solo un Super Administrador puede modificar cuentas de administradores o soporte.',
+                'message' => 'Solo un Super Administrador puede modificar cuentas de administradores.',
             ], 403);
         }
 
@@ -395,7 +367,7 @@ class AdminUserController extends Controller
             'email'              => 'sometimes|required|string|email|max:255',
             'password'           => 'nullable|string|min:6|max:255',
             'phone'              => 'nullable|string|max:50',
-            'role'               => 'nullable|string|in:student,admin,support,superadmin,super_admin',
+            'role'               => 'nullable|string|in:student,admin,superadmin,super_admin',
             'grade'              => 'nullable|string|max:50',
             'target_icfes_score' => 'nullable|integer|min:0|max:500',
             'status'             => 'nullable|string|in:Activo,Suspendido,activo,suspendido',
@@ -496,7 +468,7 @@ class AdminUserController extends Controller
         }
 
         $validated = $request->validate([
-            'role' => 'required|string|in:student,admin,support,superadmin,super_admin',
+            'role' => 'required|string|in:student,admin,superadmin,super_admin',
         ]);
 
         $conn = $this->usersConnection();

@@ -351,15 +351,15 @@ const Dashboard = () => {
                     </div>
                 </section>
 
-                {/* 4. TEMAS CON DIFICULTADES Y DIAGNÓSTICO */}
+                {/* 4. TEMAS CON DIFICULTADES Y RESUMEN */}
                 <section className="card list-card">
                     <div className="card-header">
                         <h3>
-                            <i className="fas fa-stethoscope" style={{ color: "#facc15" }}></i>
+                            <i className="fas fa-chart-line" style={{ color: "#facc15" }}></i>
                             Temas con Dificultades y Resumen
                         </h3>
-                        <Link to="/analysis" className="view-all">
-                            Diagnóstico
+                        <Link to="/statistics" className="view-all">
+                            Estadísticas
                             <i className="fas fa-chevron-right"></i>
                         </Link>
                     </div>

@@ -24,20 +24,26 @@ class RoleMiddleware
         }
 
         $allowedRoles = [];
-        foreach ($roles as $role) {
-            $normalized = strtolower(trim($role));
-            $allowedRoles[] = $normalized;
+        foreach ($roles as $roleGroup) {
+            foreach (explode(',', $roleGroup) as $r) {
+                $normalized = strtolower(trim($r));
+                if ($normalized === '') {
+                    continue;
+                }
+                $allowedRoles[] = $normalized;
 
-            if ($normalized === 'superadmin' || $normalized === 'super_admin') {
-                $allowedRoles[] = 'superadmin';
-                $allowedRoles[] = 'super_admin';
+                if ($normalized === 'superadmin' || $normalized === 'super_admin') {
+                    $allowedRoles[] = 'superadmin';
+                    $allowedRoles[] = 'super_admin';
+                }
             }
         }
 
-        $userRole = strtolower(trim((string) $user->role));
+        $userRole = strtolower(trim((string) ($user->role ?? 'student')));
 
         if (!in_array($userRole, array_unique($allowedRoles), true)) {
             return response()->json([
+                'code' => 'FORBIDDEN_ROLE',
                 'message' => 'No tienes permisos para acceder a este recurso.',
             ], 403);
         }

@@ -329,10 +329,10 @@ const Statistics = () => {
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "14px" }}>
                                     <h3 style={{ color: "#f8fafc", fontSize: "18px", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
                                         <i className="fas fa-lightbulb" style={{ color: "#facc15" }}></i>
-                                        Diagnóstico Académico Personalizado
+                                        Análisis Académico Personalizado
                                     </h3>
                                     <Link
-                                        to="/analysis"
+                                        to="/practices"
                                         style={{
                                             display: "inline-flex",
                                             alignItems: "center",
@@ -347,7 +347,7 @@ const Statistics = () => {
                                             textDecoration: "none",
                                         }}
                                     >
-                                        Ver Análisis Diagnóstico Completo
+                                        Entrenar en Prácticas
                                         <i className="fas fa-arrow-right"></i>
                                     </Link>
                                 </div>

@@ -10,7 +10,101 @@ use RuntimeException;
 class GeminiService
 {
     /**
-     * Envía un prompt a Gemini Flash y retorna el texto generado.
+     * Envía un historial de mensajes (roles 'user' y 'model') + el nuevo prompt a Gemini 3.1 Flash-Lite.
+     *
+     * @param array<int, array{role: string, content: string}> $history
+     * @param string $newPrompt
+     * @param string $systemInstruction
+     * @return string
+     */
+    public function generateChatWithHistory(
+        array $history,
+        string $newPrompt,
+        string $systemInstruction = ''
+    ): string {
+        $apiKey = config('services.gemini.api_key') ?: env('GEMINI_API_KEY');
+        $model = config('services.gemini.model', 'gemini-3.1-flash-lite');
+
+        if (empty($apiKey)) {
+            throw new RuntimeException('La clave GEMINI_API_KEY no se encuentra configurada en el archivo de entorno.');
+        }
+
+        // 1. Transformar el historial cronológico al formato oficial 'contents' de Gemini API
+        $contents = [];
+        foreach ($history as $msg) {
+            $role = ($msg['role'] ?? 'user') === 'model' ? 'model' : 'user';
+            $text = trim((string) ($msg['content'] ?? ''));
+
+            if ($text !== '') {
+                $contents[] = [
+                    'role' => $role,
+                    'parts' => [
+                        ['text' => $text],
+                    ],
+                ];
+            }
+        }
+
+        // 2. Añadir el nuevo prompt del usuario al final
+        $contents[] = [
+            'role' => 'user',
+            'parts' => [
+                ['text' => $newPrompt],
+            ],
+        ];
+
+        $payload = [
+            'contents' => $contents,
+        ];
+
+        if (!empty(trim($systemInstruction))) {
+            $payload['systemInstruction'] = [
+                'parts' => [
+                    ['text' => trim($systemInstruction)],
+                ],
+            ];
+        }
+
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $apiKey;
+
+        try {
+            $response = Http::timeout(25)->withHeaders([
+                'Content-Type' => 'application/json',
+            ])->post($url, $payload);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $generatedText = $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
+                if (!empty($generatedText)) {
+                    return trim($generatedText);
+                }
+            }
+
+            // Fallback seguro a generateText si el modelo o versión de API requiere prompt concatenado
+            $formattedHistory = "";
+            foreach ($history as $msg) {
+                $speaker = ($msg['role'] ?? 'user') === 'model' ? 'ATHENA' : 'Estudiante';
+                $formattedHistory .= "{$speaker}: " . ($msg['content'] ?? '') . "\n";
+            }
+
+            $fallbackPrompt = trim($systemInstruction) . "\n\n"
+                . ($formattedHistory ? "HISTORIAL RECIENTE DE LA CONVERSACIÓN:\n{$formattedHistory}\n" : "")
+                . "MENSAJE ACTUAL DEL ESTUDIANTE:\n\"{$newPrompt}\"\n\n"
+                . "RESPUESTA DE ATHENA:";
+
+            return $this->generateText($fallbackPrompt);
+        } catch (Throwable $e) {
+            $cleanMessage = preg_replace('/key=[a-zA-Z0-9_\-]+/', 'key=***HIDDEN***', $e->getMessage());
+            if (!empty($apiKey)) {
+                $cleanMessage = str_replace($apiKey, '***HIDDEN***', $cleanMessage);
+            }
+
+            throw new RuntimeException("Fallo en la comunicación con Gemini: " . $cleanMessage, 500);
+        }
+    }
+
+    /**
+     * Envía un prompt simple a Gemini y retorna el texto generado.
      * Sanitiza activamente cualquier excepción para evitar exponer credenciales.
      */
     public function generateText(string $prompt): string
@@ -39,7 +133,7 @@ class GeminiService
 
             // 2. Petición HTTP directa a la API v1beta de Google Generative AI
             $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . $apiKey;
-            
+
             $lastStatusCode = null;
             $lastErrorDetail = null;
 

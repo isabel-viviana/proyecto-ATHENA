@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -12,15 +11,37 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\ExamConfig;
 use App\Models\ExamAttempt;
 use App\Models\UserTopicPerformance;
-use App\Models\UserAchievement;
 use App\Models\Notification;
 use App\Models\Subscription;
-use App\Models\AiChatSession;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
+
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_BLOCKED = 'blocked';
+
+    public const ROLE_SUPERADMIN = 'superadmin';
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_STUDENT = 'student';
+
+    /**
+     * Normaliza cualquier variante de rol a los 3 únicos roles activos del sistema:
+     * 'superadmin', 'admin' o 'student'.
+     */
+    public static function normalizeRole(?string $role): string
+    {
+        $clean = strtolower(trim((string) $role));
+        if (in_array($clean, ['superadmin', 'super_admin'], true)) {
+            return self::ROLE_SUPERADMIN;
+        }
+        if ($clean === 'admin') {
+            return self::ROLE_ADMIN;
+        }
+
+        return self::ROLE_STUDENT;
+    }
 
     /**
      * The attributes that are mass assignable.
@@ -33,13 +54,11 @@ class User extends Authenticatable
         'phone',
         'password',
         'role',
+        'status',
         'firebase_uid',
         'avatar_url',
         'grade',
         'target_icfes_score',
-        'level',
-        'xp',
-        'coins',
         'streak_days',
         'last_login_at',
     ];
@@ -63,12 +82,24 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'last_login_at' => 'datetime',
         'password' => 'hashed',
-        'xp' => 'integer',
-        'coins' => 'integer',
         'streak_days' => 'integer',
-        'level' => 'integer',
         'target_icfes_score' => 'integer',
     ];
+
+    /**
+     * Determina si la cuenta del usuario se encuentra bloqueada/suspendida.
+     * Compatible tanto con la columna 'status' ('blocked') como con 'remember_token' === 'SUSPENDED'.
+     */
+    public function isBlocked(): bool
+    {
+        if (($this->remember_token ?? null) === 'SUSPENDED') {
+            return true;
+        }
+
+        $status = strtolower(trim((string) ($this->status ?? self::STATUS_ACTIVE)));
+
+        return in_array($status, ['blocked', 'suspended', 'suspendido', 'inactivo', 'inactive'], true);
+    }
 
     public function examConfigs(): HasMany
     {
@@ -85,11 +116,6 @@ class User extends Authenticatable
         return $this->hasMany(UserTopicPerformance::class);
     }
 
-    public function userAchievements(): HasMany
-    {
-        return $this->hasMany(UserAchievement::class);
-    }
-
     public function notifications(): HasMany
     {
         return $this->hasMany(Notification::class);
@@ -98,10 +124,5 @@ class User extends Authenticatable
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
-    }
-
-    public function aiChatSessions(): HasMany
-    {
-        return $this->hasMany(AiChatSession::class);
     }
 }

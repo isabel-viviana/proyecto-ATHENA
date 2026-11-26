@@ -64,14 +64,14 @@ class StudentRankingController extends Controller
                 ->get()
                 ->keyBy('student_id');
 
-            // 2. Obtener usuarios estudiantes desde MySQL (ATHENA Core)
+            // 2. Obtener usuarios estudiantes desde ATHENA Core
             $users = DB::connection('athena_core')
                 ->table('users')
                 ->where('role', 'student')
-                ->select('id', 'full_name', 'avatar_url', 'grade', 'level', 'xp')
+                ->select('id', 'full_name', 'avatar_url', 'grade')
                 ->get();
 
-            // Si MySQL fallara o no tuviera usuarios, asegurar la cuenta semilla
+            // Si la base de datos fallara o no tuviera usuarios, asegurar la cuenta semilla
             if ($users->isEmpty()) {
                 $users = collect([
                     (object) [
@@ -79,8 +79,6 @@ class StudentRankingController extends Controller
                         'full_name'  => 'Juan Sebastian Acevedo Medina',
                         'avatar_url' => null,
                         'grade'      => 'Grado 11°',
-                        'level'      => 1,
-                        'xp'         => 100,
                     ],
                 ]);
             }
@@ -110,7 +108,6 @@ class StudentRankingController extends Controller
                     'public_name'      => $publicName,
                     'avatar_url'       => $u->avatar_url,
                     'grade'            => $u->grade ?: 'Grado 11°',
-                    'level'            => (int) ($u->level ?? 1),
                     'score'            => $score,
                     'distinct_correct' => $distinctCorrect,
                     'total_answered'   => $totalAnswers,

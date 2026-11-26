@@ -2,13 +2,16 @@ import "./profile.css";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useAuthStore } from "../../stores/useAuthStore";
-import { getStudentProfileData } from "../../api/studentQuestions";
+import { getStudentProfileData, getStudentAchievements } from "../../api/studentQuestions";
+import { fetchWompiHistory } from "../../services/wompiService";
 
 const Profile = () => {
     const navigate = useNavigate();
     const user = useAuthStore((state) => state.user);
     const logout = useAuthStore((state) => state.logout);
     const [profile, setProfile] = useState(null);
+    const [achievementsSummary, setAchievementsSummary] = useState(null);
+    const [activeSubscription, setActiveSubscription] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -16,13 +19,26 @@ const Profile = () => {
         const fetchProfile = async () => {
             try {
                 setLoading(true);
-                const res = await getStudentProfileData();
-                if (res && res.success && res.data) {
-                    setProfile(res.data);
+                const [res, achRes, subRes] = await Promise.allSettled([
+                    getStudentProfileData(),
+                    getStudentAchievements(),
+                    fetchWompiHistory(),
+                ]);
+
+                if (res.status === "fulfilled" && res.value?.success && res.value?.data) {
+                    setProfile(res.value.data);
                 } else if (user) {
                     setProfile(user);
                 } else {
-                    setError(res?.message || "No se pudo obtener el perfil.");
+                    setError(res.value?.message || "No se pudo obtener el perfil.");
+                }
+
+                if (achRes.status === "fulfilled" && achRes.value?.success && achRes.value?.data?.summary) {
+                    setAchievementsSummary(achRes.value.data.summary);
+                }
+
+                if (subRes.status === "fulfilled" && subRes.value?.active_subscription) {
+                    setActiveSubscription(subRes.value.active_subscription);
                 }
             } catch (err) {
                 if (user) {
@@ -41,11 +57,11 @@ const Profile = () => {
 
     const handleLogout = async () => {
         try {
-            localStorage.removeItem("athena_token");
-            localStorage.removeItem("athena_student");
             await logout();
-        } catch {}
-        navigate("/login");
+        } catch {
+            // Ignorar errores de red durante el cierre de sesión
+        }
+        navigate("/login", { replace: true });
     };
 
     if (loading) {
@@ -86,12 +102,6 @@ const Profile = () => {
         );
     }
 
-    // Cálculos seguros de progreso de XP
-    const userLevel = profile?.level || 1;
-    const currentXp = profile?.xp || 0;
-    const targetXpForLevel = userLevel * 1000;
-    const xpPercent = Math.min(100, Math.round((currentXp / targetXpForLevel) * 100));
-
     // Inicial del avatar
     const initial = profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : "A";
 
@@ -115,7 +125,6 @@ const Profile = () => {
                         ) : (
                             <div className="avatar-circle">{initial}</div>
                         )}
-                        <span className="level-badge">LVL {userLevel}</span>
                     </div>
 
                     <div className="profile-user__info">
@@ -146,44 +155,11 @@ const Profile = () => {
                                 Meta ICFES: {profile?.target_icfes_score || 350} pts
                             </span>
                         </div>
-
-                        {/* XP */}
-                        <div className="xp-container" style={{ marginTop: "16px" }}>
-                            <div className="xp-label">
-                                <span>
-                                    Nivel <strong>{userLevel}</strong>
-                                </span>
-                                <span>
-                                    <strong>{xpPercent}%</strong> para el siguiente nivel
-                                </span>
-                            </div>
-
-                            <div className="xp-bar-bg">
-                                <div className="xp-bar-fill" style={{ width: `${xpPercent}%` }}></div>
-                            </div>
-
-                            <p className="xp-count">
-                                {currentXp.toLocaleString()} / {targetXpForLevel.toLocaleString()} XP
-                            </p>
-                        </div>
                     </div>
                 </div>
 
                 {/* QUICK STATS */}
                 <div className="quick-stats">
-                    <div className="quick-card">
-                        <div className="quick-card__icon quick-card__icon--gold">
-                            <i className="fas fa-coins"></i>
-                        </div>
-                        <div className="quick-card__content">
-                            <span className="quick-card__value">{(profile?.coins || 0).toLocaleString()}</span>
-                            <span className="quick-card__label">Monedas</span>
-                        </div>
-                        <Link to="/store" className="quick-card__link">
-                            Ver tienda
-                        </Link>
-                    </div>
-
                     <div className="quick-card">
                         <div className="quick-card__icon quick-card__icon--red">
                             <i className="fas fa-fire"></i>
@@ -264,9 +240,11 @@ const Profile = () => {
                         </div>
                         <div className="action-card__content">
                             <h3>Mis Logros</h3>
-                            <p>Descubre tus medallas y reconocimientos desbloqueados.</p>
+                            <p>Descubre tus medallas y reconocimientos académicos desbloqueados.</p>
                             <span className="action-card__badge blue">
-                                4 disponibles
+                                {achievementsSummary
+                                    ? `${achievementsSummary.unlocked_count} / ${achievementsSummary.total_count} desbloqueados`
+                                    : "Ver medallas"}
                             </span>
                         </div>
                         <i className="fas fa-chevron-right action-card__arrow"></i>
@@ -289,16 +267,18 @@ const Profile = () => {
                     </article>
                 </Link>
 
-                <Link to="/ranking">
+                <Link to="/suscripciones">
                     <article className="action-card">
                         <div className="action-card__icon pink-bg">
-                            <i className="fas fa-trophy"></i>
+                            <i className="fas fa-crown"></i>
                         </div>
                         <div className="action-card__content">
-                            <h3>Ranking Institucional</h3>
-                            <p>Consulta tu posición en la tabla general de líderes.</p>
+                            <h3>Planes y Suscripciones</h3>
+                            <p>Gestiona tu plan ATHENA Premium y pagos con Wompi.</p>
                             <span className="action-card__badge pink">
-                                Clasificación oficial
+                                {activeSubscription
+                                    ? `Plan Activo: ${activeSubscription.plan_name || "Premium"}`
+                                    : "Wompi / Premium"}
                             </span>
                         </div>
                         <i className="fas fa-chevron-right action-card__arrow"></i>

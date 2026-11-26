@@ -57,3 +57,28 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Wompi sandbox payments
+
+Payments use Wompi Colombia's hosted Web Checkout in COP. ATHENA creates a unique reference and integrity signature from the server-side plan price; the browser is redirected to Wompi and never sends card data to this API. A subscription stays pending until a signed `transaction.updated` webhook reports an approved transaction with the expected reference, amount, and currency. Renewals are manual.
+
+Configure these values in the Laravel environment using credentials from the Wompi sandbox dashboard. Do not commit credentials:
+
+```dotenv
+WOMPI_ENVIRONMENT=test
+WOMPI_PUBLIC_KEY=pub_test_...
+WOMPI_INTEGRITY_SECRET=test_integrity_...
+WOMPI_EVENTS_SECRET=test_events_...
+WOMPI_CHECKOUT_URL=https://checkout.wompi.co/p/
+WOMPI_REDIRECT_URL=https://your-frontend.example/payments/return
+```
+
+Set the sandbox dashboard's event URL to `https://your-api.example/api/payments/webhook` and enable `transaction.updated`. This integration does not add or alter database tables and does not require running migrations.
+
+Authenticated API endpoints:
+
+- `GET /api/payments/plans` returns the monthly, quarterly, and annual options, including whether each can be purchased. Monthly and annual prices come from the existing `ATHENA Pro` and `ATHENA Anual` rows. The quarterly option stays unavailable unless an `ATHENA Premium trimestral` row with a configured nonzero price and `is_active=true` already exists.
+- `POST /api/payments/checkout` accepts `{"plan_key":"monthly"}` (or `quarterly` / `annual`) and returns a `checkout_url` for browser redirection. The server chooses the amount.
+- `GET /api/payments/subscriptions/{subscriptionId}` returns the authenticated user's subscription status.
+
+The webhook endpoint is public for Wompi delivery, but validates Wompi's event checksum, sandbox environment, and a signed payment reference before it changes a subscription. Only the webhook—not the browser redirect—can activate a subscription. To honor the no-schema-change constraint, the integration stores only the pending/active subscription state; it does not persist Wompi transaction IDs or add entries to `payment_transactions`, whose existing provider constraint does not include Wompi.

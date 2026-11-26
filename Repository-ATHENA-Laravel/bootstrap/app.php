@@ -17,8 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
-            'firebase.auth' => \App\Http\Middleware\FirebaseAuth::class,
+            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
         ]);
+
+        // Asegura que toda petición autenticada en la API verifique que el usuario no esté bloqueado
+        $middleware->appendToGroup('api', \App\Http\Middleware\EnsureUserIsActive::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (AuthenticationException $e, Request $request) {

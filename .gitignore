@@ -1,4 +1,13 @@
+# Variables de entorno (nunca versionar secretos reales)
 .env
 .env.*
 !.env.example
 
+# Respaldos, dumps SQL y carpetas de scripts temporales
+backups/
+scratch/
+*.sql
+!athena-question-bank/database/sql/*.sql
+*.bak
+*.tmp
+*.log

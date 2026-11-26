@@ -1,31 +1,58 @@
+import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import useAuthStore from "../stores/useAuthStore";
+import useAuthStore, {
+    getRedirectPathByRole,
+    normalizeUserRole,
+} from "../stores/useAuthStore";
 
-const ADMIN_ROLES = ["superadmin", "super_admin", "admin", "support", "docente", "coordinador"];
+const ADMIN_ROLES = ["superadmin", "admin"];
 
 /**
  * Protege rutas del panel administrativo.
- * Redirige a /admin/login si no está autenticado,
- * a /dashboard si es estudiante, y restringe /dashboard/superadmin exclusivamente a superadmin.
+ * Maneja únicamente los roles administrativos activos ('superadmin' y 'admin').
+ * - Si no está autenticado -> redirige a /login.
+ * - Si es 'student' -> redirige a /dashboard.
+ * - Si es 'admin' e intenta acceder a rutas exclusivas de 'superadmin' (/dashboard/superadmin, /super/*, /admin/users) -> redirige a /dashboard/admin.
+ * - Si es 'superadmin' y entra a /dashboard/admin -> redirige a su panel /dashboard/superadmin.
  */
-export default function AdminRoute({ children }) {
-    const { isAuthenticated, role, isInitialized } = useAuthStore();
+export default function AdminRoute({ children, allowedRoles = ADMIN_ROLES }) {
+    const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+    const role = useAuthStore((s) => s.role);
+    const isInitialized = useAuthStore((s) => s.isInitialized);
+    const isAuthLoading = useAuthStore((s) => s.isAuthLoading);
+    const fetchCurrentUser = useAuthStore((s) => s.fetchCurrentUser);
     const location = useLocation();
+
+    // Validar sesión y rol real contra el backend (/api/auth/me) al navegar por rutas de admin
+    useEffect(() => {
+        if (isInitialized && isAuthenticated) {
+            fetchCurrentUser();
+        }
+    }, [location.pathname, isInitialized, isAuthenticated, fetchCurrentUser]);
 
     const storedAdminToken = localStorage.getItem("athena_admin_token");
     let storedAdminRole = null;
     try {
-        const parsed = JSON.parse(localStorage.getItem("athena_admin_user") || "null");
+        const parsed = JSON.parse(
+            localStorage.getItem("athena_admin_user") || "null"
+        );
         storedAdminRole = parsed?.role || null;
     } catch {
         storedAdminRole = null;
     }
 
-    const effectiveRole = String(role || storedAdminRole || "").toLowerCase().trim();
-    const normalizedRole = effectiveRole === "super_admin" ? "superadmin" : effectiveRole;
-    const hasAdminSession = (isAuthenticated || Boolean(storedAdminToken)) && ADMIN_ROLES.includes(effectiveRole);
+    const effectiveRawRole = role || storedAdminRole || "";
+    const normalizedRole = effectiveRawRole
+        ? normalizeUserRole(effectiveRawRole)
+        : "";
+    const normalizedAllowed = allowedRoles.map((r) => normalizeUserRole(r));
 
-    if (!isInitialized && !storedAdminToken) {
+    const hasAdminSession =
+        (isAuthenticated || Boolean(storedAdminToken)) &&
+        Boolean(normalizedRole) &&
+        normalizedAllowed.includes(normalizedRole);
+
+    if ((!isInitialized || isAuthLoading) && !storedAdminToken) {
         return (
             <div
                 style={{
@@ -49,18 +76,35 @@ export default function AdminRoute({ children }) {
     }
 
     if (!isAuthenticated && !storedAdminToken) {
-        return <Navigate to="/admin/login" state={{ from: location }} replace />;
+        return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
     if (!hasAdminSession) {
-        return <Navigate to="/dashboard" replace />;
+        return (
+            <Navigate
+                to={getRedirectPathByRole(normalizedRole || "student")}
+                replace
+            />
+        );
     }
 
+    // Restringir rutas exclusivas de SuperAdmin (/dashboard/superadmin, /super/*, /admin/users)
+    const isSuperOnlyPath =
+        location.pathname.startsWith("/dashboard/superadmin") ||
+        location.pathname.startsWith("/super") ||
+        location.pathname.startsWith("/admin/users");
+
+    if (isSuperOnlyPath && normalizedRole !== "superadmin") {
+        return <Navigate to="/dashboard/admin" replace />;
+    }
+
+    // Asegurar que superadmin siempre entre a su propio dashboard principal (/dashboard/superadmin)
     if (
-        (location.pathname.startsWith("/dashboard/superadmin") || location.pathname.startsWith("/super")) &&
-        normalizedRole !== "superadmin"
+        (location.pathname === "/dashboard/admin" ||
+            location.pathname === "/admin/dashboard") &&
+        normalizedRole === "superadmin"
     ) {
-        return <Navigate to={normalizedRole === "support" ? "/support/dashboard" : "/dashboard/admin"} replace />;
+        return <Navigate to="/dashboard/superadmin" replace />;
     }
 
     return children;

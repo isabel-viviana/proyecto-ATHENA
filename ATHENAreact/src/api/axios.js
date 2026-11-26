@@ -49,15 +49,45 @@ api.interceptors.request.use(
 );
 
 /**
- * Interceptor de response: maneja errores 401 globalmente.
- * Si una petición a una ruta protegida recibe 401, limpia el token inválido.
+ * Interceptor de response: maneja errores 401 y 403 (cuenta bloqueada) globalmente.
  */
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
-            const url = error.config?.url || "";
-            // No limpiar token en endpoints de login/registro para no alterar el flujo de captura de errores
+        const status = error.response?.status;
+        const data = error.response?.data;
+        const url = error.config?.url || "";
+
+        // Si el usuario fue bloqueado mientras tenía sesión activa o al intentar autenticarse
+        if (
+            status === 403 &&
+            (data?.code === "ACCOUNT_BLOCKED" ||
+                String(data?.message || "")
+                    .toLowerCase()
+                    .includes("bloquead"))
+        ) {
+            const blockedMsg =
+                data?.message ||
+                "Tu cuenta ha sido bloqueada o suspendida por un administrador.";
+
+            try {
+                sessionStorage.setItem("athena_blocked_notice", blockedMsg);
+                localStorage.removeItem("athena_admin_token");
+                localStorage.removeItem("athena_admin_user");
+            } catch {
+                // Ignorar error de storage
+            }
+
+            setAuthToken(null);
+
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                    new CustomEvent("athena:account-blocked", {
+                        detail: { message: blockedMsg },
+                    })
+                );
+            }
+        } else if (status === 401) {
             if (
                 !url.includes("/auth/firebase-login") &&
                 !url.includes("/auth/login") &&
@@ -66,6 +96,7 @@ api.interceptors.response.use(
                 setAuthToken(null);
             }
         }
+
         return Promise.reject(error);
     }
 );

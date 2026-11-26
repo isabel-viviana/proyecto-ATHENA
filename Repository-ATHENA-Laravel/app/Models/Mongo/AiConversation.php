@@ -16,8 +16,11 @@ class AiConversation extends Model
         'context',
     ];
 
+    /**
+     * En mongodb/laravel-mongodb v5, los arrays BSON se almacenan de forma nativa
+     * sin utilizar el cast 'array' de SQL (que invoca json_decode sobre strings).
+     */
     protected $casts = [
-        'messages' => 'array',
-        'context' => 'array',
+        'user_id' => 'integer',
     ];
 }

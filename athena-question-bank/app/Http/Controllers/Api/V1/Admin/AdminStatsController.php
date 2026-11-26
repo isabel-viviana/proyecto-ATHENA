@@ -20,10 +20,13 @@ class AdminStatsController extends Controller
     protected function normalizeRole(?string $role): string
     {
         $clean = strtolower(trim((string) $role));
-        if ($clean === 'super_admin') {
+        if (in_array($clean, ['superadmin', 'super_admin'], true)) {
             return 'superadmin';
         }
-        return $clean !== '' ? $clean : 'student';
+        if (in_array($clean, ['admin', 'support', 'docente', 'coordinador'], true)) {
+            return 'admin';
+        }
+        return 'student';
     }
 
     /**
@@ -59,7 +62,6 @@ class AdminStatsController extends Controller
         try {
             $allUsers = DB::connection('athena_core')
                 ->table('users')
-                ->select(['id', 'full_name', 'email', 'role', 'grade', 'remember_token', 'last_login_at', 'created_at'])
                 ->orderBy('id', 'desc')
                 ->get();
 
@@ -68,7 +70,9 @@ class AdminStatsController extends Controller
             foreach ($allUsers as $u) {
                 $userNamesById[(int) $u->id] = $u->full_name;
                 $role = $this->normalizeRole($u->role);
-                $isSuspended = ($u->remember_token === 'SUSPENDED');
+                $rawStatus = strtolower(trim((string) ($u->status ?? 'active')));
+                $isSuspended = ($u->remember_token === 'SUSPENDED')
+                    || in_array($rawStatus, ['blocked', 'suspended', 'suspendido', 'inactivo', 'inactive'], true);
 
                 if ($isSuspended) {
                     $usersStats['suspended']++;
@@ -90,15 +94,20 @@ class AdminStatsController extends Controller
                 $usersStats['by_role'][$role]++;
             }
 
-            $usersStats['recent_users'] = $allUsers->take(6)->map(fn($u) => [
-                'id'            => (int) $u->id,
-                'full_name'     => $u->full_name,
-                'email'         => $u->email,
-                'role'          => $this->normalizeRole($u->role),
-                'status'        => ($u->remember_token === 'SUSPENDED') ? 'Suspendido' : 'Activo',
-                'last_login_at' => $u->last_login_at,
-                'created_at'    => $u->created_at,
-            ])->values()->all();
+            $usersStats['recent_users'] = $allUsers->take(6)->map(function ($u) {
+                $rawStatus = strtolower(trim((string) ($u->status ?? 'active')));
+                $isSuspended = ($u->remember_token === 'SUSPENDED')
+                    || in_array($rawStatus, ['blocked', 'suspended', 'suspendido', 'inactivo', 'inactive'], true);
+                return [
+                    'id'            => (int) $u->id,
+                    'full_name'     => $u->full_name,
+                    'email'         => $u->email,
+                    'role'          => $this->normalizeRole($u->role),
+                    'status'        => $isSuspended ? 'Suspendido' : 'Activo',
+                    'last_login_at' => $u->last_login_at,
+                    'created_at'    => $u->created_at,
+                ];
+            })->values()->all();
         } catch (Throwable) {
             // Si en entorno aislado de pruebas no está athena_core inicializado, mantiene conteos en 0
         }
